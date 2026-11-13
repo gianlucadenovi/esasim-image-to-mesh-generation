@@ -2,13 +2,13 @@
 
 Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 
-TripoSR checkpoint loading requires Transformers 4.x. This generator installs exact Transformers 4.45.0, tokenizers 0.20.3, and huggingface-hub 0.34.0 into an isolated compatibility overlay; version-checks them before inference. Retains chunked upload, CUDA, Windows temp workaround, checkpoint loader, heartbeat and format exports.
+Stable Fast 3D has two local native extension dependencies in requirements.txt (texture_baker and uv_unwrapper). Pip installation now runs from the cloned repository root so relative paths resolve, while TMP/TEMP remain in the short writable Windows build directory. Windows needs compatible Visual Studio C++ and CUDA toolchain to build these extensions. TripoSR path unchanged.
 
 An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Python (`backend.py`, `def run(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-image-to-mesh-generator` · version 7 |
+| Block | `ws-image-to-mesh-generator` · version 8 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 | Runs on | NVIDIA GPU |

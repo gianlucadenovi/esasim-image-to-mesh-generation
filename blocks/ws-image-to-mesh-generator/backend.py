@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 7 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 8 · machine block, Python: def run(ctx)
 # Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-13
@@ -267,17 +267,28 @@ def run(ctx):
                   "huggingface-hub","imageio[ffmpeg]","xatlas","moderngl",
                   "scikit-image","trimesh"]
     else:
-        # Stable Fast 3D dependencies must be checked independently of TripoSR.
+        # Stable Fast 3D requirements include TWO LOCAL extension packages:
+        # ./texture_baker/ and ./uv_unwrapper/. These paths are relative to the
+        # cloned repo, not to the short temp directory used for wheel builds.
         requirements=repo/"requirements.txt"
         if not requirements.exists():
             raise RuntimeError("Missing Stable Fast 3D requirements.txt")
+        for local_pkg in ("texture_baker", "uv_unwrapper"):
+            local_dir=repo/local_pkg
+            if not (local_dir/"setup.py").exists() and not (local_dir/"pyproject.toml").exists():
+                raise RuntimeError("Missing Stable Fast 3D native extension source: "+str(local_dir))
         dep_list=["-r",str(requirements)]
+        update("setup","Stable Fast 3D requires native texture_baker and uv_unwrapper extensions; installing from the repository root.",6)
     if not ready_marker.exists():
         update("installing","First-time install of "+model+" in persistent cache. This may download a large set of wheels…",7)
         try:
             install=[sys.executable,"-m","pip","install","--target",str(dependency_dir),
                      "--no-warn-script-location"]+dep_list
-            subprocess.run(install,cwd=str(scratch),env=worker_env,check=True,timeout=1800)
+            # Keep the process working directory at the repository root for
+            # requirements.txt relative local packages. TMP/TEMP stay short,
+            # preventing earlier Windows path-length failures.
+            install_cwd=repo if model=="Stable Fast 3D" else scratch
+            subprocess.run(install,cwd=str(install_cwd),env=worker_env,check=True,timeout=1800)
             ready_marker.write_text("dependencies installed\n",encoding="utf-8")
         except subprocess.CalledProcessError as exc:
             raise RuntimeError("Dependency installation failed with short build path %s. Check detailed pip error above."%scratch) from exc
