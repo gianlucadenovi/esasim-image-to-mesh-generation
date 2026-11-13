@@ -48,7 +48,9 @@ Add multiple JPG, PNG or WebP images. Each photograph becomes its own object and
 
 Files with a shared prefix can be grouped, for example `chair_front.jpg`, `chair_side.jpg`, `chair_back.jpg`. The generator records all source filenames for the object, **but the current TripoSR and Stable Fast 3D runners only reconstruct the first image of each group**. Grouping does **not** fuse views or increase geometric accuracy yet. For true multi-view reconstruction a model such as Hunyuan3D-2mv must be integrated separately.
 
-The View resizes source images for transport and enforces a bounded upload payload. For larger batches, split the images into successive runs.
+**Current upload limitation:** The EsaSim View-run API currently accepts settings but does not expose a native binary-file upload action. To avoid the truncated JSON error seen in the first test, Mesh Studio now compresses images to a maximum of 384 pixels on their longest side, divides a compact upload into individually bounded chunks, and verifies the payload checksum on the worker when available. This compatibility path has a conservative total payload budget of about **48 KB across the whole batch**. For larger or high-resolution photographs, proper native file staging is required; do not expect this compact mode to preserve source fidelity.
+
+**Preserving the View:** Selected image previews, settings, and historical result cards are saved in the View's state and restored after starting a new run. Historical mesh download links may expire and should be retrieved from the original run's **Results** for reliable access. The rendering frame itself still remounts on a new run; this update restores its data rather than preventing the remount.
 
 ## Workflow
 
@@ -106,7 +108,7 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Blueprints in this repository
 
-- [1 · Image to mesh studio](blueprints/1-image-to-mesh-studio.json) · 4 blocks · version 1
+- [1 · Image to mesh studio](blueprints/1-image-to-mesh-studio.json) · 4 blocks · version 2
 
 ### Workspace blocks it uses
 
