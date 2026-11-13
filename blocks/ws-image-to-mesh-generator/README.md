@@ -2,13 +2,13 @@
 
 Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 
-Stable Fast 3D extension builds use existing worker PyTorch (--no-build-isolation); PyTorch/setuptools/wheel preflight checks, MSVC compiler-flag patches on Windows, Hugging Face token secret support, persistent package cache, upload validation and 20-second heartbeat. Native Visual Studio C++ toolchain and appropriate CUDA toolkit still need to exist on the Windows runner.
+Stable Fast 3D on Windows uses gpytoolbox 0.3.3 prebuilt CPython 3.12 wheel (upstream compatibility PR). Installs with --prefix, not --target, so pip can reuse worker's CUDA torch. Validates critical module imports before marking cache ready. Native extension build remains under no-build-isolation with short TMP/TEMP.
 
 An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Python (`backend.py`, `def run(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-image-to-mesh-generator` · version 9 |
+| Block | `ws-image-to-mesh-generator` · version 10 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 | Runs on | NVIDIA GPU |

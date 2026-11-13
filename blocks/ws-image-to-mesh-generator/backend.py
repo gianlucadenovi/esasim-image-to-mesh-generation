@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 9 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 10 · machine block, Python: def run(ctx)
 # Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-13
@@ -206,11 +206,22 @@ def run(ctx):
             raise RuntimeError("Windows cannot build antlr4 in the long EsaSim/OneDrive job path. Configure a short writable TEMP/TMP directory (e.g. C:\\Windows\\Temp or C:\\Users\\Public\\em) for the worker.")
     # Dependencies persist beside the repository across separate EsaSim runs.
     # This avoids rebuilding old antlr4 wheels for every generated object.
-    dependency_dir=repo/".esasim-deps"
-    dependency_dir.mkdir(parents=True,exist_ok=True)
+    if model=="Stable Fast 3D":
+        # --target causes pip to ignore the worker's installed torch and pull
+        # another full torch distribution. --prefix preserves dependency
+        # resolution against installed packages without changing worker site-packages.
+        prefix_dir=repo/".esasim-prefix"
+        prefix_dir.mkdir(parents=True,exist_ok=True)
+        dependency_dir=(prefix_dir/"Lib"/"site-packages" if os.name=="nt" else
+                        prefix_dir/"lib"/("python%d.%d"%sys.version_info[:2])/"site-packages")
+        dependency_dir.mkdir(parents=True,exist_ok=True)
+        ready_marker=repo/".esasim-sf3d-prefix-v3-ready"
+    else:
+        dependency_dir=repo/".esasim-deps"
+        dependency_dir.mkdir(parents=True,exist_ok=True)
+        ready_marker=repo/".esasim-deps-v2-ready"
     wheelcache=repo/".pip-cache"
     wheelcache.mkdir(parents=True,exist_ok=True)
-    ready_marker=repo/".esasim-deps-v2-ready"
     worker_env=dict(os.environ)
     worker_env.update(TMP=str(scratch), TEMP=str(scratch), TMPDIR=str(scratch),
                       PIP_CACHE_DIR=str(wheelcache), PIP_USER="0",
@@ -278,8 +289,17 @@ def run(ctx):
             local_dir=repo/local_pkg
             if not (local_dir/"setup.py").exists() and not (local_dir/"pyproject.toml").exists():
                 raise RuntimeError("Missing Stable Fast 3D native extension source: "+str(local_dir))
+        # The upstream 0.2.0 source release fails on Windows because its
+        # CMake build cannot locate CMakeLists.txt. Upstream SF3D PR #78
+        # upgrades to 0.3.3, which ships a CPython 3.12 Windows wheel.
+        if os.name=="nt":
+            reqtext=requirements.read_text(encoding="utf-8")
+            if "gpytoolbox==0.2.0" in reqtext:
+                reqtext=reqtext.replace("gpytoolbox==0.2.0","gpytoolbox==0.3.3")
+                requirements.write_text(reqtext,encoding="utf-8")
+                update("setup","Using precompiled gpytoolbox 0.3.3 Windows wheel (upstream SF3D compatibility fix).",6)
         dep_list=["-r",str(requirements)]
-        update("setup","Stable Fast 3D requires native texture_baker and uv_unwrapper extensions; installing from the repository root.",6)
+        update("setup","Stable Fast 3D uses local texture_baker and uv_unwrapper; installing from the repository root.",6)
     if model=="Stable Fast 3D":
         # Stable Fast 3D's texture_baker/uv_unwrapper setup.py import torch
         # while pip is evaluating wheel requirements. Default PEP517 build
@@ -344,17 +364,30 @@ def _esasim_windows_extensions():
     if not ready_marker.exists():
         update("installing","First-time install of "+model+" in persistent cache. This may download a large set of wheels…",7)
         try:
-            install=[sys.executable,"-m","pip","install","--target",str(dependency_dir),
-                     "--no-warn-script-location"]
             if model=="Stable Fast 3D":
-                install += ["--no-build-isolation"]
-            install += dep_list
+                install=[sys.executable,"-m","pip","install","--prefix",str(prefix_dir),
+                         "--no-warn-script-location","--no-build-isolation",
+                         "--prefer-binary"]+dep_list
+                update("installing","Resolving SF3D with existing CUDA PyTorch; avoiding --target torch reinstallation.",8)
+            else:
+                install=[sys.executable,"-m","pip","install","--target",str(dependency_dir),
+                         "--no-warn-script-location"]+dep_list
             # Keep the process working directory at the repository root for
             # requirements.txt relative local packages. TMP/TEMP stay short,
             # preventing earlier Windows path-length failures.
             install_cwd=repo if model=="Stable Fast 3D" else scratch
             subprocess.run(install,cwd=str(install_cwd),env=worker_env,check=True,timeout=1800)
-            ready_marker.write_text("dependencies installed\n",encoding="utf-8")
+            # Do not mark a cache usable until the model critical modules import.
+            if model=="Stable Fast 3D":
+                check=subprocess.run(
+                    [sys.executable,"-c",
+                     "import torch,transformers,open_clip,gpytoolbox,omegaconf,trimesh,rembg; import texture_baker,uv_unwrapper; print('SF3D setup verified',torch.__version__,gpytoolbox.__file__)"],
+                    cwd=str(repo),env=worker_env,capture_output=True,text=True,timeout=120)
+                if check.returncode:
+                    ctx.log("[SF3D import error] "+check.stderr[-1300:])
+                    raise RuntimeError("Stable Fast 3D dependencies installed but import validation failed: "+check.stderr[-700:])
+                ctx.log("[SF3D setup] "+check.stdout.strip())
+            ready_marker.write_text("dependencies installed\\n",encoding="utf-8")
         except subprocess.CalledProcessError as exc:
             raise RuntimeError("Dependency installation failed with short build path %s. Check detailed pip error above."%scratch) from exc
         except subprocess.TimeoutExpired as exc:
