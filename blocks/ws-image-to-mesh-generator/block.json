@@ -7,7 +7,7 @@
     "side": "backend",
     "customizable": true,
     "summary": "Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.",
-    "help": "The Mesh Studio View passes compressed image payloads and launch=true to start this block. A normal blueprint run remains idle. TripoSR and Stable Fast 3D require compatible NVIDIA/CUDA runtime and dependencies; gated models may require a Hugging Face token. Grouped images are recorded but these two backends use only the first view, not multiview reconstruction.",
+    "help": "Transfers compact images via up to 48 separately bounded chunks; verifies integrity before processing. An ordinary Blueprint Run stays idle. True large-batch upload requires an EsaSim binary upload API.",
     "inputs": [],
     "outputs": [
         {
@@ -109,6 +109,308 @@
             "label": "Clean geometry",
             "type": "bool",
             "default": false
+        },
+        {
+            "key": "images_chunk_count",
+            "label": "Upload image chunk count",
+            "type": "number",
+            "default": 0,
+            "min": 0,
+            "max": 48
+        },
+        {
+            "key": "images_checksum",
+            "label": "Upload integrity digest",
+            "type": "text",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_000",
+            "label": "Upload chunk 1",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_001",
+            "label": "Upload chunk 2",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_002",
+            "label": "Upload chunk 3",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_003",
+            "label": "Upload chunk 4",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_004",
+            "label": "Upload chunk 5",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_005",
+            "label": "Upload chunk 6",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_006",
+            "label": "Upload chunk 7",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_007",
+            "label": "Upload chunk 8",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_008",
+            "label": "Upload chunk 9",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_009",
+            "label": "Upload chunk 10",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_010",
+            "label": "Upload chunk 11",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_011",
+            "label": "Upload chunk 12",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_012",
+            "label": "Upload chunk 13",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_013",
+            "label": "Upload chunk 14",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_014",
+            "label": "Upload chunk 15",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_015",
+            "label": "Upload chunk 16",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_016",
+            "label": "Upload chunk 17",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_017",
+            "label": "Upload chunk 18",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_018",
+            "label": "Upload chunk 19",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_019",
+            "label": "Upload chunk 20",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_020",
+            "label": "Upload chunk 21",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_021",
+            "label": "Upload chunk 22",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_022",
+            "label": "Upload chunk 23",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_023",
+            "label": "Upload chunk 24",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_024",
+            "label": "Upload chunk 25",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_025",
+            "label": "Upload chunk 26",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_026",
+            "label": "Upload chunk 27",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_027",
+            "label": "Upload chunk 28",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_028",
+            "label": "Upload chunk 29",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_029",
+            "label": "Upload chunk 30",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_030",
+            "label": "Upload chunk 31",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_031",
+            "label": "Upload chunk 32",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_032",
+            "label": "Upload chunk 33",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_033",
+            "label": "Upload chunk 34",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_034",
+            "label": "Upload chunk 35",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_035",
+            "label": "Upload chunk 36",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_036",
+            "label": "Upload chunk 37",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_037",
+            "label": "Upload chunk 38",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_038",
+            "label": "Upload chunk 39",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_039",
+            "label": "Upload chunk 40",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_040",
+            "label": "Upload chunk 41",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_041",
+            "label": "Upload chunk 42",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_042",
+            "label": "Upload chunk 43",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_043",
+            "label": "Upload chunk 44",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_044",
+            "label": "Upload chunk 45",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_045",
+            "label": "Upload chunk 46",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_046",
+            "label": "Upload chunk 47",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "img_chunk_047",
+            "label": "Upload chunk 48",
+            "type": "textarea",
+            "default": ""
         }
     ],
     "hardware": [
@@ -122,6 +424,6 @@
         "torch"
     ],
     "esasim": {
-        "version": 2
+        "version": 3
     }
 }

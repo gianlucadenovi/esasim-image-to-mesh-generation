@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 2 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 3 · machine block, Python: def run(ctx)
 # Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-13
@@ -21,6 +21,56 @@
 #   candidates  number    Variations per object = 1
 #   formats     text      Mesh formats = "glb,obj,stl,ply"
 #   cleanup     bool      Clean geometry = false
+#   images_chunk_count number    Upload image chunk count = 0
+#   images_checksum text      Upload integrity digest = ""
+#   img_chunk_000 textarea  Upload chunk 1 = ""
+#   img_chunk_001 textarea  Upload chunk 2 = ""
+#   img_chunk_002 textarea  Upload chunk 3 = ""
+#   img_chunk_003 textarea  Upload chunk 4 = ""
+#   img_chunk_004 textarea  Upload chunk 5 = ""
+#   img_chunk_005 textarea  Upload chunk 6 = ""
+#   img_chunk_006 textarea  Upload chunk 7 = ""
+#   img_chunk_007 textarea  Upload chunk 8 = ""
+#   img_chunk_008 textarea  Upload chunk 9 = ""
+#   img_chunk_009 textarea  Upload chunk 10 = ""
+#   img_chunk_010 textarea  Upload chunk 11 = ""
+#   img_chunk_011 textarea  Upload chunk 12 = ""
+#   img_chunk_012 textarea  Upload chunk 13 = ""
+#   img_chunk_013 textarea  Upload chunk 14 = ""
+#   img_chunk_014 textarea  Upload chunk 15 = ""
+#   img_chunk_015 textarea  Upload chunk 16 = ""
+#   img_chunk_016 textarea  Upload chunk 17 = ""
+#   img_chunk_017 textarea  Upload chunk 18 = ""
+#   img_chunk_018 textarea  Upload chunk 19 = ""
+#   img_chunk_019 textarea  Upload chunk 20 = ""
+#   img_chunk_020 textarea  Upload chunk 21 = ""
+#   img_chunk_021 textarea  Upload chunk 22 = ""
+#   img_chunk_022 textarea  Upload chunk 23 = ""
+#   img_chunk_023 textarea  Upload chunk 24 = ""
+#   img_chunk_024 textarea  Upload chunk 25 = ""
+#   img_chunk_025 textarea  Upload chunk 26 = ""
+#   img_chunk_026 textarea  Upload chunk 27 = ""
+#   img_chunk_027 textarea  Upload chunk 28 = ""
+#   img_chunk_028 textarea  Upload chunk 29 = ""
+#   img_chunk_029 textarea  Upload chunk 30 = ""
+#   img_chunk_030 textarea  Upload chunk 31 = ""
+#   img_chunk_031 textarea  Upload chunk 32 = ""
+#   img_chunk_032 textarea  Upload chunk 33 = ""
+#   img_chunk_033 textarea  Upload chunk 34 = ""
+#   img_chunk_034 textarea  Upload chunk 35 = ""
+#   img_chunk_035 textarea  Upload chunk 36 = ""
+#   img_chunk_036 textarea  Upload chunk 37 = ""
+#   img_chunk_037 textarea  Upload chunk 38 = ""
+#   img_chunk_038 textarea  Upload chunk 39 = ""
+#   img_chunk_039 textarea  Upload chunk 40 = ""
+#   img_chunk_040 textarea  Upload chunk 41 = ""
+#   img_chunk_041 textarea  Upload chunk 42 = ""
+#   img_chunk_042 textarea  Upload chunk 43 = ""
+#   img_chunk_043 textarea  Upload chunk 44 = ""
+#   img_chunk_044 textarea  Upload chunk 45 = ""
+#   img_chunk_045 textarea  Upload chunk 46 = ""
+#   img_chunk_046 textarea  Upload chunk 47 = ""
+#   img_chunk_047 textarea  Upload chunk 48 = ""
 # Runs on  NVIDIA GPU. Return a dict to fill the "result" output.
 # Packages numpy, Pillow, trimesh, matplotlib, torch (installed by the worker with pip when missing)
 # EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
@@ -57,13 +107,28 @@ def run(ctx):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    payload = str(p.get("images_payload") or "")
-    if len(payload) > 2500000:
-        raise ValueError("Image upload payload too large. Use fewer/smaller source pictures (maximum ~2.5 MB encoded).")
+    n_chunks = int(p.get("images_chunk_count", 0) or 0)
+    if n_chunks:
+        if not 1 <= n_chunks <= 48:
+            raise ValueError("Too many image upload chunks: split the batch.")
+        chunks = [str(p.get("img_chunk_%03d" % i, "") or "") for i in range(n_chunks)]
+        if any(not x or len(x)>1050 for x in chunks):
+            raise ValueError("Image transfer chunk missing or truncated. The run parameter API cannot reliably transport this upload.")
+        payload = "".join(chunks)
+        if len(payload)>49152:
+            raise ValueError("Image payload exceeds this View API's safe 48 KiB limit.")
+        checksum = str(p.get("images_checksum", ""))
+        import hashlib
+        if checksum and hashlib.sha256(payload.encode("utf-8")).hexdigest()!=checksum:
+            raise ValueError("Image transfer checksum mismatch: refusing to reconstruct with corrupted source.")
+    else:
+        payload = str(p.get("images_payload") or "")
+        if len(payload)>49152:
+            raise ValueError("Legacy upload too large. Reopen the updated Mesh Studio.")
     try:
         items = json.loads(payload)
     except Exception as e:
-        raise ValueError("No valid uploaded images. Select files in the Mesh Studio View before generating.") from e
+        raise ValueError("The image upload was incomplete. Try a smaller image; native file uploads are not yet supported by this EsaSim View API.") from e
     if not isinstance(items,list) or not items or len(items)>24:
         raise ValueError("Upload between 1 and 24 pictures for a run.")
     quality = str(p.get("quality","balanced"))
