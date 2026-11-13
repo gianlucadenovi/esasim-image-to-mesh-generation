@@ -2,13 +2,13 @@
 
 Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 
-Generates TripoSR and Stable Fast 3D mesh assets. On Windows, TripoSR uses a scikit-image marching cubes fallback instead of compiling torchmcubes. Installs dependencies using a writable EsaSim job folder and explicit TMP/TEMP, and preserves live heartbeat telemetry. Full GPU execution remains to be tested.
+Uses a short writable Windows TMP/TEMP root for pip wheel builds to avoid WinError 206, and caches dependencies persistently next to the cloned model repo. Existing 20-second heartbeat, chunked uploads, and mesh exports remain in place.
 
 An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Python (`backend.py`, `def run(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-image-to-mesh-generator` · version 4 |
+| Block | `ws-image-to-mesh-generator` · version 5 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 | Runs on | NVIDIA GPU |

@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 4 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 5 · machine block, Python: def run(ctx)
 # Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-13
@@ -176,18 +176,47 @@ def run(ctx):
     if not (repo/"run.py").exists(): raise RuntimeError("Model runner missing: "+str(repo/"run.py"))
     # Never build packages under Windows ServiceProfiles or a shared global TEMP.
     # EsaSim job folders are writable by the worker that executes this task.
-    scratch=work/"tmp"
-    scratch.mkdir(parents=True,exist_ok=True)
-    wheelcache=work/"pip-cache"
-    wheelcache.mkdir(parents=True,exist_ok=True)
-    dependency_dir=work/"python-deps"
+    # Windows native runner can have an extremely long job directory under OneDrive.
+    # pip creates nested wheel paths there, and antlr4-python3-runtime 4.9.3
+    # fails with WinError 206. Probe SHORT, WRITABLE local temporary roots.
+    scratch=None
+    if os.name=="nt":
+        roots=[pathlib.Path(os.environ.get("SystemRoot","C:/Windows"))/"Temp",
+               pathlib.Path(os.environ.get("PUBLIC","C:/Users/Public")),
+               pathlib.Path(os.environ.get("ProgramData","C:/ProgramData"))]
+    else:
+        roots=[pathlib.Path("/tmp")]
+    for root in roots:
+        try:
+            candidate=root/"em"
+            candidate.mkdir(parents=True,exist_ok=True)
+            with open(candidate/("_writeprobe_%s"%os.getpid()),"w") as probe:
+                probe.write("ok")
+            (candidate/("_writeprobe_%s"%os.getpid())).unlink()
+            if len(str(candidate))<=55:
+                scratch=candidate
+                break
+        except (OSError,PermissionError):
+            continue
+    if scratch is None:
+        scratch=work/"tmp"
+        scratch.mkdir(parents=True,exist_ok=True)
+        if os.name=="nt":
+            raise RuntimeError("Windows cannot build antlr4 in the long EsaSim/OneDrive job path. Configure a short writable TEMP/TMP directory (e.g. C:\\Windows\\Temp or C:\\Users\\Public\\em) for the worker.")
+    # Dependencies persist beside the repository across separate EsaSim runs.
+    # This avoids rebuilding old antlr4 wheels for every generated object.
+    dependency_dir=repo/".esasim-deps"
     dependency_dir.mkdir(parents=True,exist_ok=True)
+    wheelcache=repo/".pip-cache"
+    wheelcache.mkdir(parents=True,exist_ok=True)
+    ready_marker=repo/".esasim-deps-v2-ready"
     worker_env=dict(os.environ)
     worker_env.update(TMP=str(scratch), TEMP=str(scratch), TMPDIR=str(scratch),
                       PIP_CACHE_DIR=str(wheelcache), PIP_USER="0",
                       PIP_DISABLE_PIP_VERSION_CHECK="1",
                       PYTHONNOUSERSITE="1")
     worker_env["PYTHONPATH"]=str(dependency_dir)+os.pathsep+worker_env.get("PYTHONPATH","")
+    update("setup","Using short Windows build temp %s; dependency cache %s"%(scratch,dependency_dir),5)
     if model=="TripoSR":
         # TripoSR's pinned requirements install torchmcubes from Git. This extension
         # frequently fails on Windows and is unnecessary when scikit-image supplies
@@ -226,16 +255,19 @@ def run(ctx):
         if not requirements.exists():
             raise RuntimeError("Missing Stable Fast 3D requirements.txt")
         dep_list=["-r",str(requirements)]
-    update("installing","Installing "+model+" dependencies into this job's writable folder…",7)
-    try:
-        install=[sys.executable,"-m","pip","install","--target",str(dependency_dir),
-                 "--no-warn-script-location"]+dep_list
-        subprocess.run(install,cwd=str(repo),env=worker_env,check=True,timeout=1800)
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError("Model dependency installation failed. Using writable temp "
-                           "directory %s; check Windows CUDA wheels and the pip output above."%scratch) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("Dependency installation timed out after 30 minutes.") from exc
+    if not ready_marker.exists():
+        update("installing","First-time install of "+model+" in persistent cache. This may download a large set of wheels…",7)
+        try:
+            install=[sys.executable,"-m","pip","install","--target",str(dependency_dir),
+                     "--no-warn-script-location"]+dep_list
+            subprocess.run(install,cwd=str(scratch),env=worker_env,check=True,timeout=1800)
+            ready_marker.write_text("dependencies installed\n",encoding="utf-8")
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError("Dependency installation failed with short build path %s. Check detailed pip error above."%scratch) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Dependency installation exceeded 30 minutes.") from exc
+    else:
+        update("installing","Reusing previously installed "+model+" dependencies.",7)
     # Check that the model's critical dependencies can actually be imported.
     if model=="TripoSR":
         subprocess.run([sys.executable,"-c",
