@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 6 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 7 · machine block, Python: def run(ctx)
 # Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-13
@@ -216,6 +216,23 @@ def run(ctx):
                       PIP_DISABLE_PIP_VERSION_CHECK="1",
                       PYTHONNOUSERSITE="1")
     worker_env["PYTHONPATH"]=str(dependency_dir)+os.pathsep+worker_env.get("PYTHONPATH","")
+    # TripoSR's original ViT/DINO checkpoint cannot load using Transformers 5.x.
+    # Install compatible libraries into a separate overlay; do not touch other
+    # EsaSim projects or re-install the full environment on every run.
+    compat_dir=repo/".esasim-triposr-hf-compat"
+    compat_marker=compat_dir/".versions-4_45_0-0_20_3-0_34_0"
+    if model=="TripoSR":
+        compat_dir.mkdir(parents=True,exist_ok=True)
+        if not compat_marker.exists():
+            update("installing","Installing TripoSR-compatible Transformers 4.45.0, tokenizers 0.20.3 and Hugging Face Hub 0.34.0…",6)
+            subprocess.run(
+                [sys.executable,"-m","pip","install","--target",str(compat_dir),
+                 "--no-deps","--upgrade","--no-warn-script-location",
+                 "transformers==4.45.0","tokenizers==0.20.3","huggingface-hub==0.34.0"],
+                cwd=str(scratch),env=worker_env,check=True,timeout=600)
+            compat_marker.write_text("Pinned TripoSR inference dependencies\\n",encoding="utf-8")
+        worker_env["PYTHONPATH"]=str(compat_dir)+os.pathsep+worker_env["PYTHONPATH"]
+        update("setup","TripoSR model compatibility: Transformers 4.45.0 (isolated).",6)
     update("setup","Using short Windows build temp %s; dependency cache %s"%(scratch,dependency_dir),5)
     if model=="TripoSR":
         # TripoSR's pinned requirements install torchmcubes from Git. This extension
@@ -248,7 +265,7 @@ def run(ctx):
             update("setup","Using scikit-image marching cubes instead of the Windows-incompatible torchmcubes build.",6)
         dep_list=["omegaconf==2.3.0","einops>=0.7","rembg","onnxruntime",
                   "huggingface-hub","imageio[ffmpeg]","xatlas","moderngl",
-                  "scikit-image","transformers","trimesh"]
+                  "scikit-image","trimesh"]
     else:
         # Stable Fast 3D dependencies must be checked independently of TripoSR.
         requirements=repo/"requirements.txt"
@@ -282,7 +299,7 @@ def run(ctx):
     # Check that the model's critical dependencies can actually be imported.
     if model=="TripoSR":
         subprocess.run([sys.executable,"-c",
-                        "import skimage.measure, omegaconf, einops, rembg, trimesh; print('TripoSR Python dependencies ready')"],
+                        "import skimage.measure, omegaconf, einops, rembg, trimesh; import transformers,tokenizers,huggingface_hub; assert transformers.__version__=='4.45.0', transformers.__version__; assert tokenizers.__version__=='0.20.3'; assert huggingface_hub.__version__=='0.34.0'; print('TripoSR dependencies compatible:',transformers.__version__)"],
                        cwd=str(repo),env=worker_env,check=True,timeout=60)
     update("ready", model+" model dependencies installed. Starting reconstruction.",10)
     variants=max(1,min(4,int(p.get("candidates",1))))

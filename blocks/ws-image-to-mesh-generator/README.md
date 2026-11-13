@@ -2,13 +2,13 @@
 
 Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 
-TripoSR package setup includes trimesh in the persistent dependencies and repairs previous model caches missing trimesh, without reinstalling everything. Checks imports before model inference.
+TripoSR checkpoint loading requires Transformers 4.x. This generator installs exact Transformers 4.45.0, tokenizers 0.20.3, and huggingface-hub 0.34.0 into an isolated compatibility overlay; version-checks them before inference. Retains chunked upload, CUDA, Windows temp workaround, checkpoint loader, heartbeat and format exports.
 
 An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Python (`backend.py`, `def run(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-image-to-mesh-generator` · version 6 |
+| Block | `ws-image-to-mesh-generator` · version 7 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 | Runs on | NVIDIA GPU |

@@ -12,14 +12,14 @@
         {
             "name": "1 · Image to mesh studio",
             "file": "blueprints/1-image-to-mesh-studio.json",
-            "published_version": 4,
+            "published_version": 5,
             "nodes": 4
         }
     ],
     "blocks": [
         {
             "id": "ws-image-to-mesh-generator",
-            "version": 6,
+            "version": 7,
             "name": "Image to mesh generator"
         },
         {
