@@ -6,7 +6,7 @@
     "name": "1 · Image to mesh studio",
     "description": "Upload images and grouped batches in the View, choose an open image-to-mesh model, generate mesh formats with per-object previews, details, and live progress.",
     "published_version": 2,
-    "updated": "2026-11-13 04:24:36",
+    "updated": "2026-11-13 20:01:08",
     "graph": {
         "nodes": [
             {
@@ -38,7 +38,7 @@
                 "id": "viewer",
                 "type": "viewer-3d",
                 "x": 550,
-                "y": 390,
+                "y": 274,
                 "params": {
                     "environment": "studio",
                     "floor": false,
@@ -51,7 +51,7 @@
                 "id": "table",
                 "type": "table-view",
                 "x": 550,
-                "y": 700,
+                "y": 480,
                 "params": {
                     "rows": 100
                 },

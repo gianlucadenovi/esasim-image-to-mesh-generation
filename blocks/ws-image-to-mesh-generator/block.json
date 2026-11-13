@@ -7,7 +7,7 @@
     "side": "backend",
     "customizable": true,
     "summary": "Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.",
-    "help": "Transfers compact images via up to 48 separately bounded chunks; verifies integrity before processing. An ordinary Blueprint Run stays idle. True large-batch upload requires an EsaSim binary upload API.",
+    "help": "Generates TripoSR and Stable Fast 3D mesh assets. On Windows, TripoSR uses a scikit-image marching cubes fallback instead of compiling torchmcubes. Installs dependencies using a writable EsaSim job folder and explicit TMP/TEMP, and preserves live heartbeat telemetry. Full GPU execution remains to be tested.",
     "inputs": [],
     "outputs": [
         {
@@ -424,6 +424,6 @@
         "torch"
     ],
     "esasim": {
-        "version": 3
+        "version": 4
     }
 }

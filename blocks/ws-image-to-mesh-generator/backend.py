@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 3 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 4 · machine block, Python: def run(ctx)
 # Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-13
@@ -174,13 +174,74 @@ def run(ctx):
         update("installing","Downloading " + model + " source repository…",5)
         subprocess.run(["git","clone","--depth","1",origin,str(repo)],check=True,timeout=180)
     if not (repo/"run.py").exists(): raise RuntimeError("Model runner missing: "+str(repo/"run.py"))
-    # Installation on workers can require CUDA/toolchain and access to gated weights.
-    if not (repo/".esasim_requirements_ready").exists():
-        update("installing","Installing " + model + " dependencies; CUDA toolchain may be needed…",7)
+    # Never build packages under Windows ServiceProfiles or a shared global TEMP.
+    # EsaSim job folders are writable by the worker that executes this task.
+    scratch=work/"tmp"
+    scratch.mkdir(parents=True,exist_ok=True)
+    wheelcache=work/"pip-cache"
+    wheelcache.mkdir(parents=True,exist_ok=True)
+    dependency_dir=work/"python-deps"
+    dependency_dir.mkdir(parents=True,exist_ok=True)
+    worker_env=dict(os.environ)
+    worker_env.update(TMP=str(scratch), TEMP=str(scratch), TMPDIR=str(scratch),
+                      PIP_CACHE_DIR=str(wheelcache), PIP_USER="0",
+                      PIP_DISABLE_PIP_VERSION_CHECK="1",
+                      PYTHONNOUSERSITE="1")
+    worker_env["PYTHONPATH"]=str(dependency_dir)+os.pathsep+worker_env.get("PYTHONPATH","")
+    if model=="TripoSR":
+        # TripoSR's pinned requirements install torchmcubes from Git. This extension
+        # frequently fails on Windows and is unnecessary when scikit-image supplies
+        # the exact same marching-cubes vertices/faces for the extraction stage.
+        iso=repo/"tsr"/"models"/"isosurface.py"
+        source=iso.read_text(encoding="utf-8")
+        if "from torchmcubes import marching_cubes" in source:
+            source=source.replace("from torchmcubes import marching_cubes",
+                                  "from skimage.measure import marching_cubes")
+            original="""        try:
+            v_pos, t_pos_idx = self.mc_func(level.detach(), 0.0)
+        except AttributeError:
+            print("torchmcubes was not compiled with CUDA support, use CPU version instead.")
+            v_pos, t_pos_idx = self.mc_func(level.detach().cpu(), 0.0)
+        v_pos = v_pos[..., [2, 1, 0]]
+        v_pos = v_pos / (self.resolution - 1.0)
+        return v_pos.to(level.device), t_pos_idx.to(level.device)"""
+            patched="""        density = level.detach().float().cpu().numpy()
+        v_pos, t_pos_idx, _, _ = self.mc_func(density, level=0.0)
+        v_pos = torch.as_tensor(v_pos.copy(), dtype=torch.float32, device=level.device)
+        t_pos_idx = torch.as_tensor(t_pos_idx.copy(), dtype=torch.long, device=level.device)
+        v_pos = v_pos[..., [2, 1, 0]]
+        v_pos = v_pos / (self.resolution - 1.0)
+        return v_pos, t_pos_idx"""
+            if original not in source:
+                raise RuntimeError("TripoSR isosurface implementation changed. Refusing to apply an unsafe patch.")
+            source=source.replace(original,patched)
+            iso.write_text(source,encoding="utf-8")
+            update("setup","Using scikit-image marching cubes instead of the Windows-incompatible torchmcubes build.",6)
+        dep_list=["omegaconf==2.3.0","einops>=0.7","rembg","onnxruntime",
+                  "huggingface-hub","imageio[ffmpeg]","xatlas","moderngl",
+                  "scikit-image","transformers"]
+    else:
+        # Stable Fast 3D dependencies must be checked independently of TripoSR.
         requirements=repo/"requirements.txt"
-        if requirements.exists():
-            subprocess.run([sys.executable,"-m","pip","install","-r",str(requirements)],cwd=str(repo),check=True,timeout=1800)
-        (repo/".esasim_requirements_ready").write_text("ok")
+        if not requirements.exists():
+            raise RuntimeError("Missing Stable Fast 3D requirements.txt")
+        dep_list=["-r",str(requirements)]
+    update("installing","Installing "+model+" dependencies into this job's writable folder…",7)
+    try:
+        install=[sys.executable,"-m","pip","install","--target",str(dependency_dir),
+                 "--no-warn-script-location"]+dep_list
+        subprocess.run(install,cwd=str(repo),env=worker_env,check=True,timeout=1800)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError("Model dependency installation failed. Using writable temp "
+                           "directory %s; check Windows CUDA wheels and the pip output above."%scratch) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Dependency installation timed out after 30 minutes.") from exc
+    # Check that the model's critical dependencies can actually be imported.
+    if model=="TripoSR":
+        subprocess.run([sys.executable,"-c",
+                        "import skimage.measure, omegaconf, einops, rembg, trimesh; print('TripoSR Python dependencies ready')"],
+                       cwd=str(repo),env=worker_env,check=True,timeout=60)
+    update("ready", model+" model dependencies installed. Starting reconstruction.",10)
     variants=max(1,min(4,int(p.get("candidates",1))))
     do_cleanup=bool(p.get("cleanup",False))
     formats=[x.strip().lower() for x in str(p.get("formats","glb,obj,stl,ply")).split(",") if x.strip().lower() in ("glb","obj","stl","ply")]
@@ -200,7 +261,7 @@ def run(ctx):
                 cmd+=["--model-save-format","glb","--mc-resolution",str({"fast":128,"balanced":192,"high":256}.get(quality,192))]
             else:
                 cmd+=["--texture-resolution",str({"fast":512,"balanced":1024,"high":2048}.get(quality,1024))]
-            env=dict(os.environ)
+            env=worker_env
             proc=subprocess.Popen(cmd,cwd=str(repo),stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors="replace",env=env)
             tail=[]
             for line in proc.stdout:
