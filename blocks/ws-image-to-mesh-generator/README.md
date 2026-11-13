@@ -2,13 +2,13 @@
 
 Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 
-Stable Fast 3D has two local native extension dependencies in requirements.txt (texture_baker and uv_unwrapper). Pip installation now runs from the cloned repository root so relative paths resolve, while TMP/TEMP remain in the short writable Windows build directory. Windows needs compatible Visual Studio C++ and CUDA toolchain to build these extensions. TripoSR path unchanged.
+Stable Fast 3D extension builds use existing worker PyTorch (--no-build-isolation); PyTorch/setuptools/wheel preflight checks, MSVC compiler-flag patches on Windows, Hugging Face token secret support, persistent package cache, upload validation and 20-second heartbeat. Native Visual Studio C++ toolchain and appropriate CUDA toolkit still need to exist on the Windows runner.
 
 An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Python (`backend.py`, `def run(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-image-to-mesh-generator` · version 8 |
+| Block | `ws-image-to-mesh-generator` · version 9 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 | Runs on | NVIDIA GPU |
@@ -84,6 +84,7 @@ An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Pyth
 | `img_chunk_045` Upload chunk 46 | textarea | `""` |  |
 | `img_chunk_046` Upload chunk 47 | textarea | `""` |  |
 | `img_chunk_047` Upload chunk 48 | textarea | `""` |  |
+| `token` Hugging Face access token (Stable Fast 3D) | secret | (secret) | A Hugging Face read token authorized for stabilityai/stable-fast-3d. Accept the repository license first. Only stored as EsaSim secret; do not paste into View. |
 
 ## Use it in EsaSim
 

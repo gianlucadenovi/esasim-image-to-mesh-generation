@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 8 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 9 · machine block, Python: def run(ctx)
 # Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-13
@@ -71,6 +71,7 @@
 #   img_chunk_045 textarea  Upload chunk 46 = ""
 #   img_chunk_046 textarea  Upload chunk 47 = ""
 #   img_chunk_047 textarea  Upload chunk 48 = ""
+#   token       secret    Hugging Face access token (Stable Fast 3D) = (environment variable ESASIM_SECRET_TOKEN)
 # Runs on  NVIDIA GPU. Return a dict to fill the "result" output.
 # Packages numpy, Pillow, trimesh, matplotlib, torch (installed by the worker with pip when missing)
 # EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
@@ -279,11 +280,75 @@ def run(ctx):
                 raise RuntimeError("Missing Stable Fast 3D native extension source: "+str(local_dir))
         dep_list=["-r",str(requirements)]
         update("setup","Stable Fast 3D requires native texture_baker and uv_unwrapper extensions; installing from the repository root.",6)
+    if model=="Stable Fast 3D":
+        # Stable Fast 3D's texture_baker/uv_unwrapper setup.py import torch
+        # while pip is evaluating wheel requirements. Default PEP517 build
+        # isolation hides torch, although it exists in the EsaSim worker.
+        update("setup","Checking PyTorch and native extension build prerequisites…",7)
+        probe=subprocess.run(
+            [sys.executable,"-c",
+             "import sys,torch,setuptools,wheel; from torch.utils.cpp_extension import BuildExtension; print('Python:',sys.version.split()[0], 'Torch:',torch.__version__, 'CUDA:',torch.version.cuda, 'GPU available:',torch.cuda.is_available())"],
+            cwd=str(repo),env=worker_env,capture_output=True,text=True,timeout=90)
+        if probe.stdout: ctx.log("[build preflight] "+probe.stdout.strip())
+        if probe.returncode:
+            if probe.stderr: ctx.log("[build preflight error] "+probe.stderr[-1000:])
+            raise RuntimeError(
+                "Stable Fast 3D needs PyTorch, setuptools and wheel visible to the "
+                "same Python interpreter that runs pip. Reinstall/repair these "
+                "in the EsaSim worker environment before building the extensions.")
+        worker_env["USE_NATIVE_ARCH"]="0"
+        worker_env["MAX_JOBS"]="2"
+        # Upstream setup.py unconditionally provides GCC-specific compiler
+        # flags (-O3, -fopenmp, -march=native). Replace them with MSVC options
+        # only for local Windows extension builds.
+        if os.name=="nt":
+            for ext_name in ("texture_baker","uv_unwrapper"):
+                setup_path=repo/ext_name/"setup.py"
+                if not setup_path.exists(): continue
+                setup_source=setup_path.read_text(encoding="utf-8")
+                marker="# ESASIM_WINDOWS_MSVC_FLAGS_V1"
+                if marker not in setup_source:
+                    if "ext_modules=get_extensions()," not in setup_source:
+                        raise RuntimeError("Unexpected "+ext_name+" setup.py; cannot safely set Windows MSVC flags.")
+                    wrapper='''# ESASIM_WINDOWS_MSVC_FLAGS_V1
+_original_extension_factory = get_extensions
+def _esasim_windows_extensions():
+    import os
+    os.environ["USE_NATIVE_ARCH"] = "0"
+    extensions = _original_extension_factory()
+    if extensions:
+        for ext in extensions:
+            if isinstance(ext.extra_compile_args, dict):
+                ext.extra_compile_args["cxx"] = ["/O2", "/EHsc"]
+            else:
+                ext.extra_compile_args = ["/O2", "/EHsc"]
+    return extensions
+
+'''
+                    if "setup(\\n" in setup_source:
+                        setup_source=setup_source.replace("setup(\\n",wrapper+"setup(\\n",1)
+                    elif "setup(\n" in setup_source:
+                        setup_source=setup_source.replace("setup(\n",wrapper+"setup(\n",1)
+                    else:
+                        raise RuntimeError("Cannot locate setup() in "+ext_name)
+                    setup_source=setup_source.replace("ext_modules=get_extensions(),",
+                                                       "ext_modules=_esasim_windows_extensions(),",1)
+                    setup_path.write_text(setup_source,encoding="utf-8")
+            update("setup","Prepared Stable Fast 3D extension builds with MSVC compiler flags; Visual Studio C++ tools and matching CUDA toolkit may be required.",7)
+        token_env=p.get("token_env")
+        if token_env and os.environ.get(token_env):
+            worker_env["HF_TOKEN"]=os.environ[token_env]
+            worker_env["HUGGINGFACE_HUB_TOKEN"]=os.environ[token_env]
+        elif not (worker_env.get("HF_TOKEN") or worker_env.get("HUGGINGFACE_HUB_TOKEN")):
+            ctx.log("NOTE: Stable Fast 3D model weights require accepted Hugging Face access. Set the generator's Hugging Face access token secret if not already authenticated.")
     if not ready_marker.exists():
         update("installing","First-time install of "+model+" in persistent cache. This may download a large set of wheels…",7)
         try:
             install=[sys.executable,"-m","pip","install","--target",str(dependency_dir),
-                     "--no-warn-script-location"]+dep_list
+                     "--no-warn-script-location"]
+            if model=="Stable Fast 3D":
+                install += ["--no-build-isolation"]
+            install += dep_list
             # Keep the process working directory at the repository root for
             # requirements.txt relative local packages. TMP/TEMP stay short,
             # preventing earlier Windows path-length failures.
@@ -357,7 +422,7 @@ def run(ctx):
             for fmt in formats:
                 filename=safe+"."+fmt
                 target=ctx.output("meshes",filename)
-                if fmt=="glb" and not do_cleanup and found[0].suffix.lower()==".glb":
+                if fmt=="glb" and found[0].suffix.lower()==".glb":
                     shutil.copyfile(found[0],target)
                 else:
                     mesh.export(target,file_type=fmt)
