@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 5 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 6 · machine block, Python: def run(ctx)
 # Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-13
@@ -248,7 +248,7 @@ def run(ctx):
             update("setup","Using scikit-image marching cubes instead of the Windows-incompatible torchmcubes build.",6)
         dep_list=["omegaconf==2.3.0","einops>=0.7","rembg","onnxruntime",
                   "huggingface-hub","imageio[ffmpeg]","xatlas","moderngl",
-                  "scikit-image","transformers"]
+                  "scikit-image","transformers","trimesh"]
     else:
         # Stable Fast 3D dependencies must be checked independently of TripoSR.
         requirements=repo/"requirements.txt"
@@ -268,6 +268,17 @@ def run(ctx):
             raise RuntimeError("Dependency installation exceeded 30 minutes.") from exc
     else:
         update("installing","Reusing previously installed "+model+" dependencies.",7)
+    # Upgrade existing v2 caches incrementally; earlier installs omitted trimesh
+    # because the runner's own Python environment has it, but subprocesses may not.
+    if model=="TripoSR":
+        missing_check=subprocess.run([sys.executable,"-c",
+                                      "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('trimesh') else 1)"],
+                                     cwd=str(repo),env=worker_env,timeout=60)
+        if missing_check.returncode:
+            update("installing","Installing missing trimesh into persistent worker subprocess environment…",8)
+            subprocess.run([sys.executable,"-m","pip","install","--target",str(dependency_dir),
+                            "--no-deps","--no-warn-script-location","trimesh"],
+                           cwd=str(scratch),env=worker_env,check=True,timeout=300)
     # Check that the model's critical dependencies can actually be imported.
     if model=="TripoSR":
         subprocess.run([sys.executable,"-c",

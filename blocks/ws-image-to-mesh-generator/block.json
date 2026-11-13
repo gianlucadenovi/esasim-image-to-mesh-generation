@@ -7,7 +7,7 @@
     "side": "backend",
     "customizable": true,
     "summary": "Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.",
-    "help": "Uses a short writable Windows TMP/TEMP root for pip wheel builds to avoid WinError 206, and caches dependencies persistently next to the cloned model repo. Existing 20-second heartbeat, chunked uploads, and mesh exports remain in place.",
+    "help": "TripoSR package setup includes trimesh in the persistent dependencies and repairs previous model caches missing trimesh, without reinstalling everything. Checks imports before model inference.",
     "inputs": [],
     "outputs": [
         {
@@ -424,6 +424,6 @@
         "torch"
     ],
     "esasim": {
-        "version": 5
+        "version": 6
     }
 }

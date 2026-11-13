@@ -2,13 +2,13 @@
 
 Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
 
-Uses a short writable Windows TMP/TEMP root for pip wheel builds to avoid WinError 206, and caches dependencies persistently next to the cloned model repo. Existing 20-second heartbeat, chunked uploads, and mesh exports remain in place.
+TripoSR package setup includes trimesh in the persistent dependencies and repairs previous model caches missing trimesh, without reinstalling everything. Checks imports before model inference.
 
 An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Python (`backend.py`, `def run(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-image-to-mesh-generator` · version 5 |
+| Block | `ws-image-to-mesh-generator` · version 6 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 | Runs on | NVIDIA GPU |
