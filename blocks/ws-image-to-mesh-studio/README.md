@@ -2,13 +2,13 @@
 
 View-first image uploads, model selection, batch generation, progress, mesh preview thumbnails, statistics and export downloads.
 
-Upload one or more images in the View; every file creates its own mesh. Grouped view mode records shared object sources but TripoSR and Stable Fast 3D currently use only the first view for geometry. Click Generate meshes to start a run with temporary image parameters. No inference occurs on ordinary Blueprint Run. Files are browser-resized for transport. GLB/OBJ/STL/PLY files and preview cards are displayed as run results.
+Compact compressed image uploads via chunked per-run settings, with integrity checksum. Saves selected images and result cards in View state so they reappear across runs. Current View API lacks native file upload and old-run file handles; previous download URLs can expire.
 
 An [EsaSim](https://esacode.com/) blueprint block: a view that draws in the browser, in JavaScript (`frontend.js`, `function render(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-image-to-mesh-studio` · version 1 |
+| Block | `ws-image-to-mesh-studio` · version 2 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 

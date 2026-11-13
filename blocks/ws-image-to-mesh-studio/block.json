@@ -7,7 +7,7 @@
     "side": "frontend",
     "customizable": true,
     "summary": "View-first image uploads, model selection, batch generation, progress, mesh preview thumbnails, statistics and export downloads.",
-    "help": "Upload one or more images in the View; every file creates its own mesh. Grouped view mode records shared object sources but TripoSR and Stable Fast 3D currently use only the first view for geometry. Click Generate meshes to start a run with temporary image parameters. No inference occurs on ordinary Blueprint Run. Files are browser-resized for transport. GLB/OBJ/STL/PLY files and preview cards are displayed as run results.",
+    "help": "Compact compressed image uploads via chunked per-run settings, with integrity checksum. Saves selected images and result cards in View state so they reappear across runs. Current View API lacks native file upload and old-run file handles; previous download URLs can expire.",
     "inputs": [
         {
             "id": "meshes",
@@ -59,6 +59,6 @@
         "run"
     ],
     "esasim": {
-        "version": 1
+        "version": 2
     }
 }
