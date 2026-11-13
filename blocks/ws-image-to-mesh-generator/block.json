@@ -1,0 +1,127 @@
+{
+    "id": "ws-image-to-mesh-generator",
+    "version": "1",
+    "name": "Image to mesh generator",
+    "category": "AI",
+    "icon": "box",
+    "side": "backend",
+    "customizable": true,
+    "summary": "Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.",
+    "help": "The Mesh Studio View passes compressed image payloads and launch=true to start this block. A normal blueprint run remains idle. TripoSR and Stable Fast 3D require compatible NVIDIA/CUDA runtime and dependencies; gated models may require a Hugging Face token. Grouped images are recorded but these two backends use only the first view, not multiview reconstruction.",
+    "inputs": [],
+    "outputs": [
+        {
+            "id": "meshes",
+            "label": "Generated meshes",
+            "type": "files",
+            "formats": [
+                "glb",
+                "obj",
+                "stl",
+                "ply"
+            ]
+        },
+        {
+            "id": "previews",
+            "label": "Preview images",
+            "type": "files",
+            "formats": [
+                "png"
+            ]
+        },
+        {
+            "id": "table",
+            "label": "Mesh inventory",
+            "type": "table",
+            "formats": [
+                "csv"
+            ]
+        },
+        {
+            "id": "metadata",
+            "label": "Run metadata",
+            "type": "files",
+            "formats": [
+                "json"
+            ]
+        }
+    ],
+    "params": [
+        {
+            "key": "launch",
+            "label": "Requested by Mesh Studio",
+            "type": "bool",
+            "default": false
+        },
+        {
+            "key": "images_payload",
+            "label": "Uploaded image payload (View-managed)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "model",
+            "label": "Model",
+            "type": "select",
+            "default": "TripoSR",
+            "options": [
+                "TripoSR",
+                "Stable Fast 3D"
+            ]
+        },
+        {
+            "key": "batch_mode",
+            "label": "Batch mode",
+            "type": "select",
+            "default": "independent",
+            "options": [
+                "independent",
+                "grouped"
+            ]
+        },
+        {
+            "key": "quality",
+            "label": "Quality",
+            "type": "select",
+            "default": "balanced",
+            "options": [
+                "fast",
+                "balanced",
+                "high"
+            ]
+        },
+        {
+            "key": "candidates",
+            "label": "Variations per object",
+            "type": "number",
+            "default": 1,
+            "min": 1,
+            "max": 4
+        },
+        {
+            "key": "formats",
+            "label": "Mesh formats",
+            "type": "text",
+            "default": "glb,obj,stl,ply"
+        },
+        {
+            "key": "cleanup",
+            "label": "Clean geometry",
+            "type": "bool",
+            "default": false
+        }
+    ],
+    "hardware": [
+        "nvidia"
+    ],
+    "packages": [
+        "numpy",
+        "Pillow",
+        "trimesh",
+        "matplotlib",
+        "torch"
+    ],
+    "esasim": {
+        "version": 2
+    }
+}

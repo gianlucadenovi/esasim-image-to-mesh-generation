@@ -1,0 +1,64 @@
+{
+    "id": "ws-image-to-mesh-studio",
+    "version": "1",
+    "name": "Image to Mesh Studio",
+    "category": "Visualizers",
+    "icon": "image",
+    "side": "frontend",
+    "customizable": true,
+    "summary": "View-first image uploads, model selection, batch generation, progress, mesh preview thumbnails, statistics and export downloads.",
+    "help": "Upload one or more images in the View; every file creates its own mesh. Grouped view mode records shared object sources but TripoSR and Stable Fast 3D currently use only the first view for geometry. Click Generate meshes to start a run with temporary image parameters. No inference occurs on ordinary Blueprint Run. Files are browser-resized for transport. GLB/OBJ/STL/PLY files and preview cards are displayed as run results.",
+    "inputs": [
+        {
+            "id": "meshes",
+            "label": "Mesh results",
+            "type": "files",
+            "many": true,
+            "optional": true,
+            "formats": [
+                "glb",
+                "obj",
+                "stl",
+                "ply"
+            ]
+        },
+        {
+            "id": "previews",
+            "label": "Mesh snapshots",
+            "type": "files",
+            "many": true,
+            "optional": true,
+            "formats": [
+                "png"
+            ]
+        },
+        {
+            "id": "details",
+            "label": "Mesh metadata",
+            "type": "table",
+            "optional": true,
+            "formats": [
+                "csv"
+            ]
+        },
+        {
+            "id": "status",
+            "label": "Live progress",
+            "type": "telemetry",
+            "optional": true
+        }
+    ],
+    "outputs": [],
+    "params": [],
+    "view": {
+        "w": 6,
+        "h": 7,
+        "resize": "both"
+    },
+    "permissions": [
+        "run"
+    ],
+    "esasim": {
+        "version": 1
+    }
+}
