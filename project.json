@@ -19,7 +19,7 @@
     "blocks": [
         {
             "id": "ws-image-to-mesh-generator",
-            "version": 10,
+            "version": 11,
             "name": "Image to mesh generator"
         },
         {

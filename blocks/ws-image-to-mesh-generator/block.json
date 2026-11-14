@@ -3,19 +3,42 @@
     "version": "1",
     "name": "Image to mesh generator",
     "category": "AI",
-    "icon": "box",
+    "icon": "cpu",
     "side": "backend",
     "customizable": true,
-    "summary": "Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.",
-    "help": "Stable Fast 3D on Windows uses gpytoolbox 0.3.3 prebuilt CPython 3.12 wheel (upstream compatibility PR). Installs with --prefix, not --target, so pip can reuse worker's CUDA torch. Validates critical module imports before marking cache ready. Native extension build remains under no-build-isolation with short TMP/TEMP.",
-    "inputs": [],
+    "summary": "Photos to 3D meshes on an NVIDIA GPU: TripoSR (coloured), Hunyuan3D-2 mini (detailed shape) or Hunyuan3D-2 multi-view (front/left/back/right fused); GLB/OBJ/STL/PLY, shaded previews.",
+    "help": "Start it from the Mesh Studio view: it sends the chosen pictures to this run at full quality (up to 1024 px). Or, for a run from the blueprint, give Image links (one per line) or wire pictures to Images and turn on Run without the View. Models: TripoSR (MIT, coloured mesh, seconds), Hunyuan3D-2 mini (detailed shape without colour, about 6 GB of GPU memory), Hunyuan3D-2 multi-view (pictures of one object from the front, left, back and right, named like chair_front.png, fused into one shape). Hunyuan3D-2 is under the Tencent Hunyuan Community licence, which does not cover the EU, the UK or South Korea. The model code is cloned once into the machine's cache and runs with its own library versions.",
+    "inputs": [
+        {
+            "id": "images",
+            "label": "Images (optional)",
+            "type": "files",
+            "many": true,
+            "optional": true,
+            "formats": [
+                "png",
+                "jpg",
+                "jpeg",
+                "webp"
+            ],
+            "help": "Pictures for a run started from the blueprint (with Run without the View on)"
+        }
+    ],
     "outputs": [
         {
-            "id": "meshes",
-            "label": "Generated meshes",
+            "id": "glb",
+            "label": "Meshes (GLB)",
             "type": "files",
             "formats": [
-                "glb",
+                "glb"
+            ],
+            "help": "One GLB per object: for the 3D view and downloads"
+        },
+        {
+            "id": "exports",
+            "label": "Other formats",
+            "type": "files",
+            "formats": [
                 "obj",
                 "stl",
                 "ply"
@@ -23,7 +46,7 @@
         },
         {
             "id": "previews",
-            "label": "Preview images",
+            "label": "Previews",
             "type": "files",
             "formats": [
                 "png"
@@ -48,35 +71,14 @@
     ],
     "params": [
         {
-            "key": "launch",
-            "label": "Requested by Mesh Studio",
-            "type": "bool",
-            "default": false
-        },
-        {
-            "key": "images_payload",
-            "label": "Uploaded image payload (View-managed)",
-            "type": "textarea",
-            "default": ""
-        },
-        {
             "key": "model",
             "label": "Model",
             "type": "select",
-            "default": "TripoSR",
+            "default": "Hunyuan3D-2 mini",
             "options": [
                 "TripoSR",
-                "Stable Fast 3D"
-            ]
-        },
-        {
-            "key": "batch_mode",
-            "label": "Batch mode",
-            "type": "select",
-            "default": "independent",
-            "options": [
-                "independent",
-                "grouped"
+                "Hunyuan3D-2 mini",
+                "Hunyuan3D-2 multi-view"
             ]
         },
         {
@@ -88,15 +90,24 @@
                 "fast",
                 "balanced",
                 "high"
-            ]
+            ],
+            "help": "TripoSR: surface resolution 192 / 256 / 320. Hunyuan3D-2: turbo 5 steps / 30 steps / 50 steps at a finer octree"
         },
         {
             "key": "candidates",
-            "label": "Variations per object",
+            "label": "Variations per object (Hunyuan3D-2)",
             "type": "number",
             "default": 1,
             "min": 1,
             "max": 4
+        },
+        {
+            "key": "seed",
+            "label": "Seed",
+            "type": "number",
+            "default": 1234,
+            "min": 0,
+            "max": 2147483647
         },
         {
             "key": "formats",
@@ -105,332 +116,49 @@
             "default": "glb,obj,stl,ply"
         },
         {
-            "key": "cleanup",
-            "label": "Clean geometry",
+            "key": "image_urls",
+            "label": "Image links",
+            "type": "textarea",
+            "default": "",
+            "help": "One picture link per line, for a run from the blueprint"
+        },
+        {
+            "key": "run_without_view",
+            "label": "Run without the View",
+            "type": "bool",
+            "default": false,
+            "help": "On: a blueprint Run generates from Image links / the Images input. Off: only the View's Generate meshes starts generation"
+        },
+        {
+            "key": "launch",
+            "label": "Requested by Mesh Studio (View only)",
             "type": "bool",
             "default": false
         },
         {
-            "key": "images_chunk_count",
-            "label": "Upload image chunk count",
-            "type": "number",
-            "default": 0,
-            "min": 0,
-            "max": 48
-        },
-        {
-            "key": "images_checksum",
-            "label": "Upload integrity digest",
+            "key": "session",
+            "label": "Upload session (View only)",
             "type": "text",
             "default": ""
         },
         {
-            "key": "img_chunk_000",
-            "label": "Upload chunk 1",
+            "key": "upload_manifest",
+            "label": "Upload manifest (View only)",
             "type": "textarea",
             "default": ""
-        },
-        {
-            "key": "img_chunk_001",
-            "label": "Upload chunk 2",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_002",
-            "label": "Upload chunk 3",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_003",
-            "label": "Upload chunk 4",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_004",
-            "label": "Upload chunk 5",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_005",
-            "label": "Upload chunk 6",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_006",
-            "label": "Upload chunk 7",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_007",
-            "label": "Upload chunk 8",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_008",
-            "label": "Upload chunk 9",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_009",
-            "label": "Upload chunk 10",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_010",
-            "label": "Upload chunk 11",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_011",
-            "label": "Upload chunk 12",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_012",
-            "label": "Upload chunk 13",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_013",
-            "label": "Upload chunk 14",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_014",
-            "label": "Upload chunk 15",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_015",
-            "label": "Upload chunk 16",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_016",
-            "label": "Upload chunk 17",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_017",
-            "label": "Upload chunk 18",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_018",
-            "label": "Upload chunk 19",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_019",
-            "label": "Upload chunk 20",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_020",
-            "label": "Upload chunk 21",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_021",
-            "label": "Upload chunk 22",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_022",
-            "label": "Upload chunk 23",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_023",
-            "label": "Upload chunk 24",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_024",
-            "label": "Upload chunk 25",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_025",
-            "label": "Upload chunk 26",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_026",
-            "label": "Upload chunk 27",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_027",
-            "label": "Upload chunk 28",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_028",
-            "label": "Upload chunk 29",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_029",
-            "label": "Upload chunk 30",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_030",
-            "label": "Upload chunk 31",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_031",
-            "label": "Upload chunk 32",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_032",
-            "label": "Upload chunk 33",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_033",
-            "label": "Upload chunk 34",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_034",
-            "label": "Upload chunk 35",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_035",
-            "label": "Upload chunk 36",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_036",
-            "label": "Upload chunk 37",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_037",
-            "label": "Upload chunk 38",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_038",
-            "label": "Upload chunk 39",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_039",
-            "label": "Upload chunk 40",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_040",
-            "label": "Upload chunk 41",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_041",
-            "label": "Upload chunk 42",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_042",
-            "label": "Upload chunk 43",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_043",
-            "label": "Upload chunk 44",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_044",
-            "label": "Upload chunk 45",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_045",
-            "label": "Upload chunk 46",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_046",
-            "label": "Upload chunk 47",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "img_chunk_047",
-            "label": "Upload chunk 48",
-            "type": "textarea",
-            "default": ""
-        },
-        {
-            "key": "token",
-            "label": "Hugging Face access token (Stable Fast 3D)",
-            "type": "secret",
-            "default": "",
-            "help": "A Hugging Face read token authorized for stabilityai/stable-fast-3d. Accept the repository license first. Only stored as EsaSim secret; do not paste into View."
         }
     ],
     "hardware": [
         "nvidia"
     ],
     "packages": [
+        "torch[cuda]",
         "numpy",
         "Pillow",
         "trimesh",
-        "matplotlib",
-        "torch"
+        "matplotlib"
     ],
     "esasim": {
-        "version": 10
+        "version": 11
     }
 }

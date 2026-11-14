@@ -1,261 +1,400 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 10 · machine block, Python: def run(ctx)
-# Run TripoSR or Stable Fast 3D on user-uploaded source images, batch objects, export GLB/OBJ/STL/PLY, previews and metadata.
+# Image to mesh generator (ws-image-to-mesh-generator) · version 11 · machine block, Python: def run(ctx)
+# Photos to 3D meshes on an NVIDIA GPU: TripoSR (coloured), Hunyuan3D-2 mini (detailed shape) or Hunyuan3D-2 multi-view (front/left/back/right fused); GLB/OBJ/STL/PLY, shaded previews.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
-# Saved: 2026-11-13
+# Saved: 2026-11-14
 #
 # Inputs   ctx.inputs["id"] is a list of files: .path .name .size .read_text() .read_json()
-#   (none)
+#   images      Files (png, jpg, jpeg, webp) Images (optional) · several · optional · Pictures for a run started from the blueprint (with Run without the View on)
 # Outputs  ctx.output("id", "name.ext") is the path to write; ctx.write_json / ctx.write_text
-#   meshes      Files (glb, obj, stl, ply) Generated meshes
-#   previews    Files (png)               Preview images
+#   glb         Files (glb)               Meshes (GLB) · One GLB per object: for the 3D view and downloads
+#   exports     Files (obj, stl, ply)     Other formats
+#   previews    Files (png)               Previews
 #   table       Table (csv)               Mesh inventory
 #   metadata    Files (json)              Run metadata
 #   telemetry   Live telemetry            ctx.telemetry("channel", data) while it runs
 # Settings ctx.params["key"]
-#   launch      bool      Requested by Mesh Studio = false
-#   images_payload textarea  Uploaded image payload (View-managed) = ""
-#   model       select    Model = "TripoSR" of TripoSR | Stable Fast 3D
-#   batch_mode  select    Batch mode = "independent" of independent | grouped
+#   model       select    Model = "Hunyuan3D-2 mini" of TripoSR | Hunyuan3D-2 mini | Hunyuan3D-2 multi-view
 #   quality     select    Quality = "balanced" of fast | balanced | high
-#   candidates  number    Variations per object = 1
+#   candidates  number    Variations per object (Hunyuan3D-2) = 1
+#   seed        number    Seed = 1234
 #   formats     text      Mesh formats = "glb,obj,stl,ply"
-#   cleanup     bool      Clean geometry = false
-#   images_chunk_count number    Upload image chunk count = 0
-#   images_checksum text      Upload integrity digest = ""
-#   img_chunk_000 textarea  Upload chunk 1 = ""
-#   img_chunk_001 textarea  Upload chunk 2 = ""
-#   img_chunk_002 textarea  Upload chunk 3 = ""
-#   img_chunk_003 textarea  Upload chunk 4 = ""
-#   img_chunk_004 textarea  Upload chunk 5 = ""
-#   img_chunk_005 textarea  Upload chunk 6 = ""
-#   img_chunk_006 textarea  Upload chunk 7 = ""
-#   img_chunk_007 textarea  Upload chunk 8 = ""
-#   img_chunk_008 textarea  Upload chunk 9 = ""
-#   img_chunk_009 textarea  Upload chunk 10 = ""
-#   img_chunk_010 textarea  Upload chunk 11 = ""
-#   img_chunk_011 textarea  Upload chunk 12 = ""
-#   img_chunk_012 textarea  Upload chunk 13 = ""
-#   img_chunk_013 textarea  Upload chunk 14 = ""
-#   img_chunk_014 textarea  Upload chunk 15 = ""
-#   img_chunk_015 textarea  Upload chunk 16 = ""
-#   img_chunk_016 textarea  Upload chunk 17 = ""
-#   img_chunk_017 textarea  Upload chunk 18 = ""
-#   img_chunk_018 textarea  Upload chunk 19 = ""
-#   img_chunk_019 textarea  Upload chunk 20 = ""
-#   img_chunk_020 textarea  Upload chunk 21 = ""
-#   img_chunk_021 textarea  Upload chunk 22 = ""
-#   img_chunk_022 textarea  Upload chunk 23 = ""
-#   img_chunk_023 textarea  Upload chunk 24 = ""
-#   img_chunk_024 textarea  Upload chunk 25 = ""
-#   img_chunk_025 textarea  Upload chunk 26 = ""
-#   img_chunk_026 textarea  Upload chunk 27 = ""
-#   img_chunk_027 textarea  Upload chunk 28 = ""
-#   img_chunk_028 textarea  Upload chunk 29 = ""
-#   img_chunk_029 textarea  Upload chunk 30 = ""
-#   img_chunk_030 textarea  Upload chunk 31 = ""
-#   img_chunk_031 textarea  Upload chunk 32 = ""
-#   img_chunk_032 textarea  Upload chunk 33 = ""
-#   img_chunk_033 textarea  Upload chunk 34 = ""
-#   img_chunk_034 textarea  Upload chunk 35 = ""
-#   img_chunk_035 textarea  Upload chunk 36 = ""
-#   img_chunk_036 textarea  Upload chunk 37 = ""
-#   img_chunk_037 textarea  Upload chunk 38 = ""
-#   img_chunk_038 textarea  Upload chunk 39 = ""
-#   img_chunk_039 textarea  Upload chunk 40 = ""
-#   img_chunk_040 textarea  Upload chunk 41 = ""
-#   img_chunk_041 textarea  Upload chunk 42 = ""
-#   img_chunk_042 textarea  Upload chunk 43 = ""
-#   img_chunk_043 textarea  Upload chunk 44 = ""
-#   img_chunk_044 textarea  Upload chunk 45 = ""
-#   img_chunk_045 textarea  Upload chunk 46 = ""
-#   img_chunk_046 textarea  Upload chunk 47 = ""
-#   img_chunk_047 textarea  Upload chunk 48 = ""
-#   token       secret    Hugging Face access token (Stable Fast 3D) = (environment variable ESASIM_SECRET_TOKEN)
+#   image_urls  textarea  Image links = ""
+#   run_without_view bool      Run without the View = false
+#   launch      bool      Requested by Mesh Studio (View only) = false
+#   session     text      Upload session (View only) = ""
+#   upload_manifest textarea  Upload manifest (View only) = ""
 # Runs on  NVIDIA GPU. Return a dict to fill the "result" output.
-# Packages numpy, Pillow, trimesh, matplotlib, torch (installed by the worker with pip when missing)
+# Packages torch[cuda], numpy, Pillow, trimesh, matplotlib (installed by the worker with pip when missing)
 # EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 # ── end of EsaSim block header ────────────────────────────────────────
 
-import os, io, re, json, csv, time, base64, subprocess, sys, pathlib, shutil, traceback, threading
+"""Image to mesh: photographs become 3D meshes on the machine's NVIDIA GPU.
+
+Models
+  TripoSR (VAST AI, MIT)                 one photo -> coloured mesh, a few seconds
+  Hunyuan3D-2 mini (Tencent, 0.6B)       one photo -> detailed shape (no colour)
+  Hunyuan3D-2 mv (Tencent, 1.1B)         front/left/back/right photos of one object -> one shape
+
+Pictures come from the Mesh Studio view (sent to this run in pieces as messages, at full quality), from links in
+Image links, or from files wired to the Images input. The model code is cloned once into the machine's cache and run
+in a subprocess with the library versions it was written for (Transformers 4.45), so nothing else on the worker
+changes."""
+import base64
+import csv
+import hashlib
+import io
+import json
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+
+MODELS = {
+    "TripoSR": {"kind": "triposr", "views": 1},
+    "Hunyuan3D-2 mini": {"kind": "hunyuan", "views": 1, "repo": "tencent/Hunyuan3D-2mini",
+                         "sub": "hunyuan3d-dit-v2-mini", "turbo": "hunyuan3d-dit-v2-mini-turbo"},
+    "Hunyuan3D-2 multi-view": {"kind": "hunyuan", "views": 4, "repo": "tencent/Hunyuan3D-2mv",
+                               "sub": "hunyuan3d-dit-v2-mv", "turbo": "hunyuan3d-dit-v2-mv-turbo"},
+}
+ALIASES = {"Stable Fast 3D": "Hunyuan3D-2 mini"}            # removed: needs a C++/CUDA build on Windows, gated
+VIEWS = ("front", "left", "back", "right")
+QUALITY = {  # TripoSR marching-cubes resolution; Hunyuan steps, octree resolution, turbo
+    "fast": {"mc": 192, "steps": 5, "octree": 256, "turbo": True, "faces": 40000},
+    "balanced": {"mc": 256, "steps": 30, "octree": 320, "turbo": False, "faces": 80000},
+    "high": {"mc": 320, "steps": 50, "octree": 380, "turbo": False, "faces": 150000},
+}
+CHANNEL = "mesh_upload"
+MAX_SIDE = 1024
+
 
 def run(ctx):
     p = ctx.params
-    hb_state = {"stage":"preparing","message":"Preparing mesh workflow","percent":1}
-    hb_stop = threading.Event()
-    def heartbeat():
-        while not hb_stop.wait(20):
-            try:
-                s = dict(hb_state)
-                ctx.log("[heartbeat] Worker alive; " + s["message"])
-                ctx.progress(int(s["percent"]), s["message"] + " (worker alive)")
-                ctx.telemetry("mesh_status", {"stage":s["stage"],"message":s["message"]+" — still working","percent":s["percent"],"heartbeat":True})
-            except Exception as exc:
-                print("[heartbeat] Could not report: %s" % exc, flush=True)
-    def update(stage, msg, pct, **extra):
-        hb_state.update(stage=stage,message=msg,percent=int(pct))
-        ctx.log("[mesh] " + msg)
-        ctx.progress(max(0,min(100,int(pct))), msg)
-        ctx.telemetry("mesh_status", dict(stage=stage, message=msg, percent=int(pct), **extra))
-    if not p.get("launch", False):
-        update("idle", "Mesh Studio ready. Choose images in View and click Generate meshes.", 100)
-        return {"result":{"status":"idle"}}
-    threading.Thread(target=heartbeat,daemon=True).start()
-    import numpy as np
-    from PIL import Image
-    import trimesh
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    hb = {"stage": "preparing", "message": "Preparing", "percent": 1}
+    stop = threading.Event()
 
-    n_chunks = int(p.get("images_chunk_count", 0) or 0)
-    if n_chunks:
-        if not 1 <= n_chunks <= 48:
-            raise ValueError("Too many image upload chunks: split the batch.")
-        chunks = [str(p.get("img_chunk_%03d" % i, "") or "") for i in range(n_chunks)]
-        if any(not x or len(x)>1050 for x in chunks):
-            raise ValueError("Image transfer chunk missing or truncated. The run parameter API cannot reliably transport this upload.")
-        payload = "".join(chunks)
-        if len(payload)>49152:
-            raise ValueError("Image payload exceeds this View API's safe 48 KiB limit.")
-        checksum = str(p.get("images_checksum", ""))
-        import hashlib
-        if checksum and hashlib.sha256(payload.encode("utf-8")).hexdigest()!=checksum:
-            raise ValueError("Image transfer checksum mismatch: refusing to reconstruct with corrupted source.")
-    else:
-        payload = str(p.get("images_payload") or "")
-        if len(payload)>49152:
-            raise ValueError("Legacy upload too large. Reopen the updated Mesh Studio.")
+    def update(stage, msg, pct=None, **extra):
+        if pct is not None:
+            hb["percent"] = int(max(0, min(100, pct)))
+            ctx.progress(hb["percent"], msg)
+        hb.update(stage=stage, message=msg)
+        ctx.log("[mesh] " + msg)
+        ctx.telemetry("mesh_status", dict(stage=stage, message=msg, percent=hb["percent"], **extra))
+
+    has_inputs = bool(ctx.inputs.get("images")) or str(p.get("image_urls") or "").strip()
+    if not p.get("launch", False) and not (p.get("run_without_view") and has_inputs):
+        update("idle", "Mesh Studio ready. Choose images in the View and click Generate meshes.", 100)
+        return {"status": "idle"}
+
+    def heartbeat():
+        while not stop.wait(15):
+            try:
+                ctx.progress(hb["percent"], hb["message"])
+                ctx.telemetry("mesh_status", {"stage": hb["stage"], "message": hb["message"], "percent": hb["percent"], "heartbeat": True})
+            except Exception:
+                pass
+    threading.Thread(target=heartbeat, daemon=True).start()
     try:
-        items = json.loads(payload)
-    except Exception as e:
-        raise ValueError("The image upload was incomplete. Try a smaller image; native file uploads are not yet supported by this EsaSim View API.") from e
-    if not isinstance(items,list) or not items or len(items)>24:
-        raise ValueError("Upload between 1 and 24 pictures for a run.")
-    quality = str(p.get("quality","balanced"))
-    model = str(p.get("model","TripoSR"))
-    batch = str(p.get("batch_mode","independent"))
-    if model not in ("TripoSR","Stable Fast 3D"):
-        raise ValueError("Executable backends in this version: TripoSR and Stable Fast 3D.")
-    if batch not in ("independent","grouped"):
-        raise ValueError("Invalid batch mode.")
-    if batch == "grouped" and model not in ("TripoSR","Stable Fast 3D"):
-        raise ValueError("Unsupported model for grouped input.")
-    update("preparing","Reading %d uploaded pictures…" % len(items), 2)
-    work = pathlib.Path(ctx.folder)/"mesh_studio"
-    work.mkdir(parents=True,exist_ok=True)
-    groups={}
-    for i,entry in enumerate(items):
-        if not isinstance(entry,dict): raise ValueError("Invalid image entry")
-        name = re.sub(r"[^a-zA-Z0-9._-]","_",str(entry.get("name","image_%d"%i)))[:100]
-        raw = str(entry.get("data",""))
-        if "," in raw: raw = raw.split(",",1)[1]
-        blob=base64.b64decode(raw,validate=True)
-        if len(blob)>2500000: raise ValueError("One image exceeds 2.5 MB")
-        im=Image.open(io.BytesIO(blob))
+        return generate(ctx, p, update)
+    finally:
+        stop.set()
+
+
+# ------------------------------------------------------------------------------------------------ pictures
+def receive_upload(ctx, p, update):
+    """The View's pictures: a manifest in the settings, the bytes as messages in pieces. Ask for what is missing
+    until everything is here (the View answers each request)."""
+    session = str(p.get("session") or "")
+    manifest = json.loads(str(p.get("upload_manifest") or "[]"))
+    if not session or not manifest:
+        return []
+    total = sum(int(m["parts"]) for m in manifest)
+    got = {}
+    t0 = last_ask = time.time() - 10
+    t0 = time.time()
+    while True:
+        try:
+            msgs = ctx.messages(CHANNEL) or []
+        except Exception:
+            msgs = []
+        for m in msgs:
+            d = m.get("data", m) if isinstance(m, dict) else None
+            if not isinstance(d, dict) or str(d.get("session")) != session:
+                continue
+            try:
+                got[(int(d["i"]), int(d["part"]))] = str(d["b64"])
+            except (KeyError, TypeError, ValueError):
+                continue
+        missing = [[int(m["i"]), k] for m in manifest for k in range(int(m["parts"])) if (int(m["i"]), k) not in got]
+        if not missing:
+            break
+        now = time.time()
+        if now - last_ask > 3:
+            last_ask = now
+            update("awaiting_upload", "Receiving pictures from the View: %d of %d pieces" % (total - len(missing), total),
+                   2 + 6 * (total - len(missing)) / max(1, total), session=session, missing=missing[:300], received=total - len(missing), total=total)
+        if now - t0 > 600:
+            raise RuntimeError("The pictures did not arrive from the View within 10 minutes (%d of %d pieces). Keep the View open "
+                               "while the run starts, then press Generate meshes again." % (total - len(missing), total))
+        time.sleep(0.4)
+    update("upload_complete", "All %d picture%s received." % (len(manifest), "s" if len(manifest) != 1 else ""), 8, session=session)
+    out = []
+    for m in manifest:
+        data = "".join(got[(int(m["i"]), k)] for k in range(int(m["parts"])))
+        raw = base64.b64decode(data.split(",", 1)[1] if data.startswith("data:") else data)
+        if m.get("sha256") and hashlib.sha256(raw).hexdigest() != m["sha256"]:
+            raise RuntimeError("Picture %s arrived damaged (checksum mismatch): press Generate meshes again." % m.get("name"))
+        out.append({"name": str(m.get("name") or "image_%d" % m["i"]), "bytes": raw, "view": str(m.get("view") or ""),
+                    "object": str(m.get("object") or "")})
+    return out
+
+
+def other_pictures(ctx, p):
+    out = []
+    for f in ctx.inputs.get("images", []) or []:
+        if re.search(r"\.(png|jpe?g|webp|bmp)$", f.name, re.I):
+            with open(f.path, "rb") as fh:
+                out.append({"name": f.name, "bytes": fh.read(), "view": "", "object": ""})
+    for url in [u.strip() for u in str(p.get("image_urls") or "").splitlines() if u.strip()]:
+        req = urllib.request.Request(url, headers={"User-Agent": "EsaSim-mesh/1.0"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            out.append({"name": url.rstrip("/").split("/")[-1].split("?")[0] or "image", "bytes": r.read(), "view": "", "object": ""})
+    return out
+
+
+def view_of(name):
+    m = re.search(r"[_\-\s](front|left|back|right)$", pathlib.Path(name).stem, re.I)
+    return m.group(1).lower() if m else ""
+
+
+def object_of(name):
+    stem = pathlib.Path(name).stem
+    return re.sub(r"[_\-\s](front|left|back|right|side|top|bottom|view\d*)$", "", stem, flags=re.I) or stem
+
+
+# ------------------------------------------------------------------------------------------------ main
+def generate(ctx, p, update):
+    from PIL import Image
+    choice = ALIASES.get(str(p.get("model") or "TripoSR"), str(p.get("model") or "TripoSR"))
+    if choice not in MODELS:
+        raise ValueError("Model: one of %s." % ", ".join(MODELS))
+    spec = MODELS[choice]
+    quality = str(p.get("quality") or "balanced")
+    q = QUALITY.get(quality, QUALITY["balanced"])
+    variants = max(1, min(4, int(p.get("candidates") or 1))) if spec["kind"] == "hunyuan" else 1
+    seed0 = int(p.get("seed") or 1234)
+    formats = [x for x in (s.strip().lower() for s in str(p.get("formats") or "glb,obj,stl,ply").split(",")) if x in ("glb", "obj", "stl", "ply")] or ["glb"]
+    if "glb" not in formats:
+        formats.insert(0, "glb")
+
+    update("preparing", "Collecting the pictures…", 2)
+    pics = receive_upload(ctx, p, update) if p.get("launch") else []
+    pics += other_pictures(ctx, p)
+    if not pics:
+        raise ValueError("No pictures: add images in the Mesh Studio view (or Image links / the Images input).")
+    if len(pics) > 24:
+        raise ValueError("At most 24 pictures per run.")
+
+    work = pathlib.Path(ctx.folder) / "mesh_inputs"
+    work.mkdir(parents=True, exist_ok=True)
+    images = []
+    for i, pic in enumerate(pics):
+        im = Image.open(io.BytesIO(pic["bytes"]))
         im.load()
-        if im.width*im.height>3000000: raise ValueError("Image too large")
-        im=im.convert("RGB")
-        path=work/("source_%03d.jpg"%i)
-        im.save(path,quality=91)
-        stem=re.sub(r"_(front|back|left|right|side|top|bottom|view[0-9]+)$","",pathlib.Path(name).stem,flags=re.I)
-        group=str(entry.get("group") or stem or ("object_%03d"%i))
-        key=("object_%03d"%i) if batch=="independent" else group
-        groups.setdefault(key,[]).append(dict(name=name,path=path))
-    if len(groups)>24: raise ValueError("Too many objects")
-    # Grouped views are retained as evidence; current backends use the first photograph.
-    if batch=="grouped":
-        update("notice","Grouped source views stored, but this model generates from the first view only. True multiview fusion is not claimed.",3)
-    cache=pathlib.Path(os.environ.get("ESASIM_MESH_REPOS",str(pathlib.Path.home()/".cache"/"esasim-mesh")))
-    cache.mkdir(parents=True,exist_ok=True)
-    repo_name="TripoSR" if model=="TripoSR" else "stable-fast-3d"
-    origin="https://github.com/VAST-AI-Research/TripoSR.git" if model=="TripoSR" else "https://github.com/Stability-AI/stable-fast-3d.git"
-    repo=cache/repo_name
-    if not (repo/"run.py").exists():
-        update("installing","Downloading " + model + " source repository…",5)
-        subprocess.run(["git","clone","--depth","1",origin,str(repo)],check=True,timeout=180)
-    if not (repo/"run.py").exists(): raise RuntimeError("Model runner missing: "+str(repo/"run.py"))
-    # Never build packages under Windows ServiceProfiles or a shared global TEMP.
-    # EsaSim job folders are writable by the worker that executes this task.
-    # Windows native runner can have an extremely long job directory under OneDrive.
-    # pip creates nested wheel paths there, and antlr4-python3-runtime 4.9.3
-    # fails with WinError 206. Probe SHORT, WRITABLE local temporary roots.
-    scratch=None
-    if os.name=="nt":
-        roots=[pathlib.Path(os.environ.get("SystemRoot","C:/Windows"))/"Temp",
-               pathlib.Path(os.environ.get("PUBLIC","C:/Users/Public")),
-               pathlib.Path(os.environ.get("ProgramData","C:/ProgramData"))]
+        im = im.convert("RGBA") if (im.mode in ("RGBA", "LA", "P") and "A" in im.convert("RGBA").getbands()) else im.convert("RGB")
+        if max(im.size) > MAX_SIDE:
+            s = MAX_SIDE / max(im.size)
+            im = im.resize((max(1, round(im.width * s)), max(1, round(im.height * s))), Image.LANCZOS)
+        path = work / ("in_%02d.png" % i)
+        im.save(path)
+        images.append({"name": pic["name"], "path": path, "view": (pic["view"] or view_of(pic["name"])).lower(),
+                       "object": pic["object"] or object_of(pic["name"]), "size": im.size})
+
+    # objects: one per picture, or (multi-view) the pictures of one object by view
+    objects = []
+    if spec["views"] > 1:
+        groups = {}
+        for im in images:
+            groups.setdefault(im["object"], []).append(im)
+        for name, ims in groups.items():
+            views, free = {}, [v for v in VIEWS]
+            for im in ims:
+                if im["view"] in VIEWS and im["view"] not in views:
+                    views[im["view"]] = im
+                    free.remove(im["view"])
+            for im in ims:
+                if im not in views.values() and free:
+                    views[free.pop(0)] = im
+            if "front" not in views:
+                raise ValueError("Object %s has no front view: mark one of its pictures as front." % name)
+            objects.append({"name": name, "views": views})
     else:
-        roots=[pathlib.Path("/tmp")]
+        for im in images:
+            objects.append({"name": im["object"], "views": {"front": im}})
+    seen = {}
+    for o in objects:                                               # unique, file-safe names
+        base = re.sub(r"[^A-Za-z0-9_-]+", "_", o["name"])[:40].strip("_") or "object"
+        seen[base] = seen.get(base, 0) + 1
+        o["safe"] = base if seen[base] == 1 else "%s_%d" % (base, seen[base])
+
+    import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError("These models need an NVIDIA GPU usable from PyTorch, and this machine has none.")
+    gpu = torch.cuda.get_device_name(0)
+    vram = torch.cuda.get_device_properties(0).total_memory / 1e9
+    update("preparing", "%d object%s with %s (%s quality) on %s, %.0f GB." % (len(objects), "s" if len(objects) != 1 else "", choice, quality, gpu, vram), 9)
+
+    env = prepare_env(ctx, spec, update)
+    out_root = pathlib.Path(ctx.folder) / "mesh_raw"
+    out_root.mkdir(parents=True, exist_ok=True)
+    t_all = time.time()
+    if spec["kind"] == "triposr":
+        raw = run_triposr(ctx, env, objects, q, out_root, update)
+    else:
+        raw = run_hunyuan(ctx, env, spec, objects, q, variants, seed0, out_root, update)
+
+    import trimesh
+    rows = []
+    for k, (obj, var, path, secs) in enumerate(raw):
+        mesh = load_mesh(path)
+        if spec["kind"] == "triposr":                               # TripoSR is Z-up: stand it up (Y-up, as glTF wants)
+            import numpy as np
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0]))
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))
+        lo, hi = mesh.bounds
+        mesh.apply_translation([-(lo[0] + hi[0]) / 2, -lo[1], -(lo[2] + hi[2]) / 2])   # centred, standing on y = 0
+        stem = obj["safe"] + ("_v%d" % (var + 1) if variants > 1 else "")
+        files = []
+        for fmt in formats:
+            target = ctx.output("glb" if fmt == "glb" else "exports", stem + "." + fmt)
+            mesh.export(target, file_type=fmt)
+            files.append(stem + "." + fmt)
+        render_preview(mesh, ctx.output("previews", stem + "_preview.png"))
+        row = {"object": stem, "model": choice, "views": ",".join(sorted(obj["views"])), "pictures": ";".join(v["name"] for v in obj["views"].values()),
+               "variation": var + 1, "vertices": len(mesh.vertices), "faces": len(mesh.faces), "watertight": bool(mesh.is_watertight),
+               "colour": "vertex colours" if getattr(mesh.visual, "kind", None) == "vertex" else "none",
+               "height_units": round(float(mesh.extents[1]), 3), "seconds": round(secs, 1), "files": ";".join(files), "preview": stem + "_preview.png"}
+        rows.append(row)
+        ctx.telemetry("mesh_done", {"object": stem, "vertices": row["vertices"], "faces": row["faces"]})
+        update("exported", "%s: %d vertices, %d faces, exported as %s." % (stem, row["vertices"], row["faces"], ", ".join(f.upper() for f in formats)),
+               90 + 9 * (k + 1) / len(raw))
+    with open(ctx.output("table", "models.csv"), "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    ctx.write_json("metadata", "generation.json", {"model": choice, "quality": quality, "settings": q, "variations": variants,
+                                                    "seed": seed0, "gpu": gpu, "objects": rows, "total_s": round(time.time() - t_all, 1),
+                                                    "licence": "TripoSR: MIT. Hunyuan3D-2: Tencent Hunyuan Community licence (not for use in the EU, UK or South Korea)."})
+    update("done", "Finished: %d mesh%s from %d picture%s in %.0f s." % (len(rows), "es" if len(rows) != 1 else "", len(images),
+                                                                        "s" if len(images) != 1 else "", time.time() - t_all), 100)
+    return {"meshes": len(rows), "model": choice, "gpu": gpu}
+
+
+def load_mesh(path):
+    import trimesh
+    asset = trimesh.load(str(path), force="scene", process=False)
+    geoms = [g for g in asset.geometry.values() if isinstance(g, trimesh.Trimesh)] if hasattr(asset, "geometry") else [asset]
+    if not geoms:
+        raise RuntimeError("The model wrote an empty mesh (%s)." % path)
+    if hasattr(asset, "dump"):
+        geoms = [g for g in asset.dump() if isinstance(g, trimesh.Trimesh)] or geoms   # scene transforms applied
+    return geoms[0] if len(geoms) == 1 else trimesh.util.concatenate(geoms)
+
+
+# ------------------------------------------------------------------------------------------------ environments
+def cache_root():
+    return pathlib.Path(os.environ.get("ESASIM_MESH_REPOS", str(pathlib.Path.home() / ".cache" / "esasim-mesh")))
+
+
+def short_temp(fallback):
+    roots = [pathlib.Path(os.environ.get("SystemRoot", "C:/Windows")) / "Temp", pathlib.Path(os.environ.get("PUBLIC", "C:/Users/Public"))] if os.name == "nt" else [pathlib.Path("/tmp")]
     for root in roots:
         try:
-            candidate=root/"em"
-            candidate.mkdir(parents=True,exist_ok=True)
-            with open(candidate/("_writeprobe_%s"%os.getpid()),"w") as probe:
-                probe.write("ok")
-            (candidate/("_writeprobe_%s"%os.getpid())).unlink()
-            if len(str(candidate))<=55:
-                scratch=candidate
-                break
-        except (OSError,PermissionError):
+            d = root / "em"
+            d.mkdir(parents=True, exist_ok=True)
+            probe = d / ("_probe_%d" % os.getpid())
+            probe.write_text("ok")
+            probe.unlink()
+            return d
+        except OSError:
             continue
-    if scratch is None:
-        scratch=work/"tmp"
-        scratch.mkdir(parents=True,exist_ok=True)
-        if os.name=="nt":
-            raise RuntimeError("Windows cannot build antlr4 in the long EsaSim/OneDrive job path. Configure a short writable TEMP/TMP directory (e.g. C:\\Windows\\Temp or C:\\Users\\Public\\em) for the worker.")
-    # Dependencies persist beside the repository across separate EsaSim runs.
-    # This avoids rebuilding old antlr4 wheels for every generated object.
-    if model=="Stable Fast 3D":
-        # --target causes pip to ignore the worker's installed torch and pull
-        # another full torch distribution. --prefix preserves dependency
-        # resolution against installed packages without changing worker site-packages.
-        prefix_dir=repo/".esasim-prefix"
-        prefix_dir.mkdir(parents=True,exist_ok=True)
-        dependency_dir=(prefix_dir/"Lib"/"site-packages" if os.name=="nt" else
-                        prefix_dir/"lib"/("python%d.%d"%sys.version_info[:2])/"site-packages")
-        dependency_dir.mkdir(parents=True,exist_ok=True)
-        ready_marker=repo/".esasim-sf3d-prefix-v3-ready"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+def pip(ctx, args, env, cwd, timeout=1800):
+    cmd = [sys.executable, "-m", "pip", "install", "--no-warn-script-location", "--disable-pip-version-check"] + args
+    r = subprocess.run(cmd, cwd=str(cwd), env=env, capture_output=True, text=True, errors="replace", timeout=timeout)
+    if r.returncode:
+        ctx.log("[pip] " + (r.stdout[-2500:] + "\n" + r.stderr[-2500:]))
+        raise RuntimeError("Installing %s failed (see the log above)." % " ".join(a for a in args if not a.startswith("-"))[:200])
+
+
+def prepare_env(ctx, spec, update):
+    cache = cache_root()
+    cache.mkdir(parents=True, exist_ok=True)
+    scratch = short_temp(cache / "tmp")
+    env = dict(os.environ)
+    env.update(TMP=str(scratch), TEMP=str(scratch), TMPDIR=str(scratch), PIP_USER="0", PYTHONNOUSERSITE="1",
+               PYTHONIOENCODING="utf-8", HF_HUB_DISABLE_SYMLINKS_WARNING="1", PYTHONUNBUFFERED="1")
+    # Transformers 4.45 for both models (their DINO/CLIP image encoders do not load with Transformers 5), isolated
+    compat = cache / "hf-compat-4_45"
+    if not (compat / ".ready").exists():
+        update("installing", "Installing Transformers 4.45 for the mesh models (once per machine)…", 9)
+        pip(ctx, ["--target", str(compat), "--no-deps", "--upgrade", "transformers==4.45.0", "tokenizers==0.20.3",
+                  "huggingface-hub==0.34.0", "diffusers==0.32.2"], env, scratch, 900)
+        (compat / ".ready").write_text("ok")
+    deps = cache / "mesh-deps-v1"
+    if not (deps / ".ready").exists():
+        update("installing", "Installing the mesh libraries (once per machine, a few minutes)…", 9)
+        # none of these depend on PyTorch, so pip --target does not pull a second copy of it
+        pip(ctx, ["--target", str(deps), "--prefer-binary", "omegaconf==2.3.0", "einops>=0.7", "rembg", "onnxruntime",
+                  "scikit-image", "trimesh", "pymeshlab", "opencv-python-headless", "pyyaml", "tqdm", "imageio", "xatlas",
+                  "moderngl", "regex", "requests", "filelock", "fsspec", "packaging", "safetensors", "typing-extensions",
+                  "importlib-metadata"], env, scratch)
+        # accelerate declares PyTorch as a dependency: install it alone, without dependencies
+        pip(ctx, ["--target", str(deps), "--no-deps", "accelerate", "psutil"], env, scratch, 600)
+        (deps / ".ready").write_text("ok")
+    env["PYTHONPATH"] = os.pathsep.join([str(compat), str(deps), env.get("PYTHONPATH", "")])
+    env["U2NET_HOME"] = str(cache / "rembg")                       # background-removal model, kept with the rest
+
+    if spec["kind"] == "triposr":
+        repo = cache / "TripoSR"
+        if not (repo / "run.py").exists():
+            update("installing", "Downloading TripoSR's code…", 9)
+            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/VAST-AI-Research/TripoSR.git", str(repo)], check=True, timeout=300)
+        patch_triposr(repo)
     else:
-        dependency_dir=repo/".esasim-deps"
-        dependency_dir.mkdir(parents=True,exist_ok=True)
-        ready_marker=repo/".esasim-deps-v2-ready"
-    wheelcache=repo/".pip-cache"
-    wheelcache.mkdir(parents=True,exist_ok=True)
-    worker_env=dict(os.environ)
-    worker_env.update(TMP=str(scratch), TEMP=str(scratch), TMPDIR=str(scratch),
-                      PIP_CACHE_DIR=str(wheelcache), PIP_USER="0",
-                      PIP_DISABLE_PIP_VERSION_CHECK="1",
-                      PYTHONNOUSERSITE="1")
-    worker_env["PYTHONPATH"]=str(dependency_dir)+os.pathsep+worker_env.get("PYTHONPATH","")
-    # TripoSR's original ViT/DINO checkpoint cannot load using Transformers 5.x.
-    # Install compatible libraries into a separate overlay; do not touch other
-    # EsaSim projects or re-install the full environment on every run.
-    compat_dir=repo/".esasim-triposr-hf-compat"
-    compat_marker=compat_dir/".versions-4_45_0-0_20_3-0_34_0"
-    if model=="TripoSR":
-        compat_dir.mkdir(parents=True,exist_ok=True)
-        if not compat_marker.exists():
-            update("installing","Installing TripoSR-compatible Transformers 4.45.0, tokenizers 0.20.3 and Hugging Face Hub 0.34.0…",6)
-            subprocess.run(
-                [sys.executable,"-m","pip","install","--target",str(compat_dir),
-                 "--no-deps","--upgrade","--no-warn-script-location",
-                 "transformers==4.45.0","tokenizers==0.20.3","huggingface-hub==0.34.0"],
-                cwd=str(scratch),env=worker_env,check=True,timeout=600)
-            compat_marker.write_text("Pinned TripoSR inference dependencies\\n",encoding="utf-8")
-        worker_env["PYTHONPATH"]=str(compat_dir)+os.pathsep+worker_env["PYTHONPATH"]
-        update("setup","TripoSR model compatibility: Transformers 4.45.0 (isolated).",6)
-    update("setup","Using short Windows build temp %s; dependency cache %s"%(scratch,dependency_dir),5)
-    if model=="TripoSR":
-        # TripoSR's pinned requirements install torchmcubes from Git. This extension
-        # frequently fails on Windows and is unnecessary when scikit-image supplies
-        # the exact same marching-cubes vertices/faces for the extraction stage.
-        iso=repo/"tsr"/"models"/"isosurface.py"
-        source=iso.read_text(encoding="utf-8")
-        if "from torchmcubes import marching_cubes" in source:
-            source=source.replace("from torchmcubes import marching_cubes",
-                                  "from skimage.measure import marching_cubes")
-            original="""        try:
+        repo = cache / "Hunyuan3D-2"
+        if not (repo / "hy3dgen").exists():
+            update("installing", "Downloading Hunyuan3D-2's code…", 9)
+            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.git", str(repo)], check=True, timeout=300)
+        env["HY3DGEN_MODELS"] = str(cache / "hy3dgen-models")
+    env["ESASIM_REPO"] = str(repo)
+    check = "import skimage.measure, einops, omegaconf, rembg, trimesh, transformers; assert transformers.__version__ == '4.45.0', transformers.__version__"
+    if spec["kind"] == "hunyuan":
+        check = "import sys; sys.path.insert(0, %r); " % str(repo) + check + "; import pymeshlab, cv2, diffusers; from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline"
+    r = subprocess.run([sys.executable, "-c", check], cwd=str(repo), env=env, capture_output=True, text=True, errors="replace", timeout=300)
+    if r.returncode:
+        ctx.log("[setup] " + r.stderr[-2500:])
+        raise RuntimeError("The %s environment does not import cleanly (see the log above)." % ("TripoSR" if spec["kind"] == "triposr" else "Hunyuan3D-2"))
+    update("ready", "Model code and libraries ready.", 10)
+    return env
+
+
+def patch_triposr(repo):
+    """TripoSR's torchmcubes does not build on Windows: use scikit-image's marching cubes (same surface)."""
+    iso = repo / "tsr" / "models" / "isosurface.py"
+    src = iso.read_text(encoding="utf-8")
+    if "from torchmcubes import marching_cubes" not in src:
+        return
+    src = src.replace("from torchmcubes import marching_cubes", "from skimage.measure import marching_cubes")
+    old = """        try:
             v_pos, t_pos_idx = self.mc_func(level.detach(), 0.0)
         except AttributeError:
             print("torchmcubes was not compiled with CUDA support, use CPU version instead.")
@@ -263,233 +402,171 @@ def run(ctx):
         v_pos = v_pos[..., [2, 1, 0]]
         v_pos = v_pos / (self.resolution - 1.0)
         return v_pos.to(level.device), t_pos_idx.to(level.device)"""
-            patched="""        density = level.detach().float().cpu().numpy()
+    new = """        density = level.detach().float().cpu().numpy()
         v_pos, t_pos_idx, _, _ = self.mc_func(density, level=0.0)
         v_pos = torch.as_tensor(v_pos.copy(), dtype=torch.float32, device=level.device)
         t_pos_idx = torch.as_tensor(t_pos_idx.copy(), dtype=torch.long, device=level.device)
         v_pos = v_pos[..., [2, 1, 0]]
         v_pos = v_pos / (self.resolution - 1.0)
         return v_pos, t_pos_idx"""
-            if original not in source:
-                raise RuntimeError("TripoSR isosurface implementation changed. Refusing to apply an unsafe patch.")
-            source=source.replace(original,patched)
-            iso.write_text(source,encoding="utf-8")
-            update("setup","Using scikit-image marching cubes instead of the Windows-incompatible torchmcubes build.",6)
-        dep_list=["omegaconf==2.3.0","einops>=0.7","rembg","onnxruntime",
-                  "huggingface-hub","imageio[ffmpeg]","xatlas","moderngl",
-                  "scikit-image","trimesh"]
-    else:
-        # Stable Fast 3D requirements include TWO LOCAL extension packages:
-        # ./texture_baker/ and ./uv_unwrapper/. These paths are relative to the
-        # cloned repo, not to the short temp directory used for wheel builds.
-        requirements=repo/"requirements.txt"
-        if not requirements.exists():
-            raise RuntimeError("Missing Stable Fast 3D requirements.txt")
-        for local_pkg in ("texture_baker", "uv_unwrapper"):
-            local_dir=repo/local_pkg
-            if not (local_dir/"setup.py").exists() and not (local_dir/"pyproject.toml").exists():
-                raise RuntimeError("Missing Stable Fast 3D native extension source: "+str(local_dir))
-        # The upstream 0.2.0 source release fails on Windows because its
-        # CMake build cannot locate CMakeLists.txt. Upstream SF3D PR #78
-        # upgrades to 0.3.3, which ships a CPython 3.12 Windows wheel.
-        if os.name=="nt":
-            reqtext=requirements.read_text(encoding="utf-8")
-            if "gpytoolbox==0.2.0" in reqtext:
-                reqtext=reqtext.replace("gpytoolbox==0.2.0","gpytoolbox==0.3.3")
-                requirements.write_text(reqtext,encoding="utf-8")
-                update("setup","Using precompiled gpytoolbox 0.3.3 Windows wheel (upstream SF3D compatibility fix).",6)
-        dep_list=["-r",str(requirements)]
-        update("setup","Stable Fast 3D uses local texture_baker and uv_unwrapper; installing from the repository root.",6)
-    if model=="Stable Fast 3D":
-        # Stable Fast 3D's texture_baker/uv_unwrapper setup.py import torch
-        # while pip is evaluating wheel requirements. Default PEP517 build
-        # isolation hides torch, although it exists in the EsaSim worker.
-        update("setup","Checking PyTorch and native extension build prerequisites…",7)
-        probe=subprocess.run(
-            [sys.executable,"-c",
-             "import sys,torch,setuptools,wheel; from torch.utils.cpp_extension import BuildExtension; print('Python:',sys.version.split()[0], 'Torch:',torch.__version__, 'CUDA:',torch.version.cuda, 'GPU available:',torch.cuda.is_available())"],
-            cwd=str(repo),env=worker_env,capture_output=True,text=True,timeout=90)
-        if probe.stdout: ctx.log("[build preflight] "+probe.stdout.strip())
-        if probe.returncode:
-            if probe.stderr: ctx.log("[build preflight error] "+probe.stderr[-1000:])
-            raise RuntimeError(
-                "Stable Fast 3D needs PyTorch, setuptools and wheel visible to the "
-                "same Python interpreter that runs pip. Reinstall/repair these "
-                "in the EsaSim worker environment before building the extensions.")
-        worker_env["USE_NATIVE_ARCH"]="0"
-        worker_env["MAX_JOBS"]="2"
-        # Upstream setup.py unconditionally provides GCC-specific compiler
-        # flags (-O3, -fopenmp, -march=native). Replace them with MSVC options
-        # only for local Windows extension builds.
-        if os.name=="nt":
-            for ext_name in ("texture_baker","uv_unwrapper"):
-                setup_path=repo/ext_name/"setup.py"
-                if not setup_path.exists(): continue
-                setup_source=setup_path.read_text(encoding="utf-8")
-                marker="# ESASIM_WINDOWS_MSVC_FLAGS_V1"
-                if marker not in setup_source:
-                    if "ext_modules=get_extensions()," not in setup_source:
-                        raise RuntimeError("Unexpected "+ext_name+" setup.py; cannot safely set Windows MSVC flags.")
-                    wrapper='''# ESASIM_WINDOWS_MSVC_FLAGS_V1
-_original_extension_factory = get_extensions
-def _esasim_windows_extensions():
-    import os
-    os.environ["USE_NATIVE_ARCH"] = "0"
-    extensions = _original_extension_factory()
-    if extensions:
-        for ext in extensions:
-            if isinstance(ext.extra_compile_args, dict):
-                ext.extra_compile_args["cxx"] = ["/O2", "/EHsc"]
-            else:
-                ext.extra_compile_args = ["/O2", "/EHsc"]
-    return extensions
+    if old not in src:
+        raise RuntimeError("TripoSR's isosurface code changed upstream: the Windows patch cannot be applied.")
+    iso.write_text(src.replace(old, new), encoding="utf-8")
 
+
+def stream(ctx, cmd, env, cwd, on_line):
+    proc = subprocess.Popen(cmd, cwd=str(cwd), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1)
+    tail = []
+    for line in proc.stdout:
+        line = line.rstrip()
+        if not line:
+            continue
+        tail = (tail + [line])[-15:]
+        on_line(line)
+    rc = proc.wait()
+    if rc:
+        for t in tail:
+            ctx.log("[model] " + t[:400])
+        raise RuntimeError("The model stopped with exit code %d: %s" % (rc, tail[-1][:300] if tail else ""))
+
+
+# ------------------------------------------------------------------------------------------------ TripoSR
+def run_triposr(ctx, env, objects, q, out_root, update):
+    repo = pathlib.Path(env["ESASIM_REPO"])
+    paths = [str(o["views"]["front"]["path"]) for o in objects]
+    cmd = [sys.executable, str(repo / "run.py")] + paths + ["--output-dir", str(out_root), "--model-save-format", "glb",
+                                                            "--mc-resolution", str(q["mc"]), "--foreground-ratio", "0.85"]
+    update("generating", "TripoSR: %d picture%s (background removal, then reconstruction)…" % (len(paths), "s" if len(paths) != 1 else ""), 12)
+    t0, state = time.time(), {"n": 0}
+
+    def on_line(line):
+        low = line.lower()
+        if "exporting mesh" in low or "extracting mesh" in low:
+            state["n"] += 1 if "exporting" in low else 0
+            update("generating", "TripoSR: %s" % line.split(" - ")[-1][:120], 12 + 76 * state["n"] / max(1, len(paths)))
+        elif "error" in low or "traceback" in low:
+            ctx.log("[model] " + line[:400])
+    stream(ctx, cmd, env, repo, on_line)
+    secs = (time.time() - t0) / max(1, len(paths))
+    out = []
+    for i, o in enumerate(objects):
+        f = out_root / str(i) / "mesh.glb"
+        if not f.exists():
+            raise RuntimeError("TripoSR produced no mesh for %s." % o["name"])
+        out.append((o, 0, f, secs))
+    return out
+
+
+# ------------------------------------------------------------------------------------------------ Hunyuan3D-2
+HY_RUNNER = r'''
+import json, os, sys, time
+cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+sys.path.insert(0, cfg["repo"])
+import torch
+from PIL import Image
+from hy3dgen.rembg import BackgroundRemover
+from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline, FloaterRemover, DegenerateFaceRemover, FaceReducer
+print("ESASIM loading", cfg["model"], cfg["subfolder"], flush=True)
+pipe = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(cfg["model"], subfolder=cfg["subfolder"], use_safetensors=True, device="cuda")
+if cfg.get("flashvdm"):
+    try:
+        pipe.enable_flashvdm()
+    except Exception as e:
+        print("ESASIM note FlashVDM unavailable:", e, flush=True)
+rembg = BackgroundRemover()
+def prep(path):
+    im = Image.open(path)
+    if im.mode == "RGBA" and im.getchannel("A").getextrema()[0] < 250:
+        return im                                # already cut out
+    return rembg(im.convert("RGB"))
+for n, job in enumerate(cfg["jobs"]):
+    views = {k: prep(v) for k, v in job["views"].items()}
+    image = views if cfg["multiview"] else views["front"]
+    t0 = time.time()
+    mesh = pipe(image=image, num_inference_steps=cfg["steps"], octree_resolution=cfg["octree"], num_chunks=cfg["chunks"],
+                generator=torch.manual_seed(job["seed"]), output_type="trimesh")[0]
+    mesh = FloaterRemover()(mesh)
+    mesh = DegenerateFaceRemover()(mesh)
+    mesh = FaceReducer()(mesh, max_facenum=cfg["faces"])
+    mesh.export(job["out"])
+    print("ESASIM done %d %.1f" % (n, time.time() - t0), flush=True)
+    torch.cuda.empty_cache()
 '''
-                    if "setup(\\n" in setup_source:
-                        setup_source=setup_source.replace("setup(\\n",wrapper+"setup(\\n",1)
-                    elif "setup(\n" in setup_source:
-                        setup_source=setup_source.replace("setup(\n",wrapper+"setup(\n",1)
-                    else:
-                        raise RuntimeError("Cannot locate setup() in "+ext_name)
-                    setup_source=setup_source.replace("ext_modules=get_extensions(),",
-                                                       "ext_modules=_esasim_windows_extensions(),",1)
-                    setup_path.write_text(setup_source,encoding="utf-8")
-            update("setup","Prepared Stable Fast 3D extension builds with MSVC compiler flags; Visual Studio C++ tools and matching CUDA toolkit may be required.",7)
-        token_env=p.get("token_env")
-        if token_env and os.environ.get(token_env):
-            worker_env["HF_TOKEN"]=os.environ[token_env]
-            worker_env["HUGGINGFACE_HUB_TOKEN"]=os.environ[token_env]
-        elif not (worker_env.get("HF_TOKEN") or worker_env.get("HUGGINGFACE_HUB_TOKEN")):
-            ctx.log("NOTE: Stable Fast 3D model weights require accepted Hugging Face access. Set the generator's Hugging Face access token secret if not already authenticated.")
-    if not ready_marker.exists():
-        update("installing","First-time install of "+model+" in persistent cache. This may download a large set of wheels…",7)
-        try:
-            if model=="Stable Fast 3D":
-                install=[sys.executable,"-m","pip","install","--prefix",str(prefix_dir),
-                         "--no-warn-script-location","--no-build-isolation",
-                         "--prefer-binary"]+dep_list
-                update("installing","Resolving SF3D with existing CUDA PyTorch; avoiding --target torch reinstallation.",8)
-            else:
-                install=[sys.executable,"-m","pip","install","--target",str(dependency_dir),
-                         "--no-warn-script-location"]+dep_list
-            # Keep the process working directory at the repository root for
-            # requirements.txt relative local packages. TMP/TEMP stay short,
-            # preventing earlier Windows path-length failures.
-            install_cwd=repo if model=="Stable Fast 3D" else scratch
-            subprocess.run(install,cwd=str(install_cwd),env=worker_env,check=True,timeout=1800)
-            # Do not mark a cache usable until the model critical modules import.
-            if model=="Stable Fast 3D":
-                check=subprocess.run(
-                    [sys.executable,"-c",
-                     "import torch,transformers,open_clip,gpytoolbox,omegaconf,trimesh,rembg; import texture_baker,uv_unwrapper; print('SF3D setup verified',torch.__version__,gpytoolbox.__file__)"],
-                    cwd=str(repo),env=worker_env,capture_output=True,text=True,timeout=120)
-                if check.returncode:
-                    ctx.log("[SF3D import error] "+check.stderr[-1300:])
-                    raise RuntimeError("Stable Fast 3D dependencies installed but import validation failed: "+check.stderr[-700:])
-                ctx.log("[SF3D setup] "+check.stdout.strip())
-            ready_marker.write_text("dependencies installed\\n",encoding="utf-8")
-        except subprocess.CalledProcessError as exc:
-            raise RuntimeError("Dependency installation failed with short build path %s. Check detailed pip error above."%scratch) from exc
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("Dependency installation exceeded 30 minutes.") from exc
-    else:
-        update("installing","Reusing previously installed "+model+" dependencies.",7)
-    # Upgrade existing v2 caches incrementally; earlier installs omitted trimesh
-    # because the runner's own Python environment has it, but subprocesses may not.
-    if model=="TripoSR":
-        missing_check=subprocess.run([sys.executable,"-c",
-                                      "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('trimesh') else 1)"],
-                                     cwd=str(repo),env=worker_env,timeout=60)
-        if missing_check.returncode:
-            update("installing","Installing missing trimesh into persistent worker subprocess environment…",8)
-            subprocess.run([sys.executable,"-m","pip","install","--target",str(dependency_dir),
-                            "--no-deps","--no-warn-script-location","trimesh"],
-                           cwd=str(scratch),env=worker_env,check=True,timeout=300)
-    # Check that the model's critical dependencies can actually be imported.
-    if model=="TripoSR":
-        subprocess.run([sys.executable,"-c",
-                        "import skimage.measure, omegaconf, einops, rembg, trimesh; import transformers,tokenizers,huggingface_hub; assert transformers.__version__=='4.45.0', transformers.__version__; assert tokenizers.__version__=='0.20.3'; assert huggingface_hub.__version__=='0.34.0'; print('TripoSR dependencies compatible:',transformers.__version__)"],
-                       cwd=str(repo),env=worker_env,check=True,timeout=60)
-    update("ready", model+" model dependencies installed. Starting reconstruction.",10)
-    variants=max(1,min(4,int(p.get("candidates",1))))
-    do_cleanup=bool(p.get("cleanup",False))
-    formats=[x.strip().lower() for x in str(p.get("formats","glb,obj,stl,ply")).split(",") if x.strip().lower() in ("glb","obj","stl","ply")]
-    if not formats: formats=["glb"]
-    rows=[]; records=[]; total=len(groups)*variants; finished=0
-    for key,sources in groups.items():
+
+
+def run_hunyuan(ctx, env, spec, objects, q, variants, seed0, out_root, update):
+    repo = pathlib.Path(env["ESASIM_REPO"])
+    jobs, index = [], []
+    for o in objects:
         for v in range(variants):
-            idx=finished+1
-            safe=re.sub(r"[^a-zA-Z0-9_-]","_",key)[:50]+"_%02d"%(v+1)
-            outdir=work/safe
-            outdir.mkdir(parents=True,exist_ok=True)
-            source=sources[0]["path"]
-            update("generating","Generating mesh %d/%d — %s with %s" %(idx,total,key,model),10+int(70*finished/total),object=key,completed=finished,total=total)
-            t0=time.monotonic()
-            cmd=[sys.executable,str(repo/"run.py"),str(source),"--output-dir",str(outdir)]
-            if model=="TripoSR":
-                cmd+=["--model-save-format","glb","--mc-resolution",str({"fast":128,"balanced":192,"high":256}.get(quality,192))]
-            else:
-                cmd+=["--texture-resolution",str({"fast":512,"balanced":1024,"high":2048}.get(quality,1024))]
-            env=worker_env
-            proc=subprocess.Popen(cmd,cwd=str(repo),stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors="replace",env=env)
-            tail=[]
-            for line in proc.stdout:
-                line=line.rstrip()
-                if line:
-                    tail.append(line)
-                    if len(tail)>12: tail.pop(0)
-                    if ("error" in line.lower() or "loading" in line.lower()):
-                        ctx.log("[model] " + line[:450])
-            rc=proc.wait()
-            if rc!=0:
-                raise RuntimeError("%s failed for %s (exit %d). Last output: %s" %(model,key,rc," | ".join(tail[-5:])))
-            found=list(outdir.rglob("mesh.glb"))+list(outdir.rglob("mesh.obj"))
-            if not found: raise RuntimeError("Model finished but no mesh was produced for "+key)
-            asset=trimesh.load(str(found[0]),force="scene",process=False)
-            mesh=trimesh.util.concatenate([g for g in asset.geometry.values() if isinstance(g,trimesh.Trimesh)])
-            if do_cleanup:
-                mesh.remove_unreferenced_vertices()
-                mesh.merge_vertices()
-                mesh.fix_normals()
-            files=[]
-            for fmt in formats:
-                filename=safe+"."+fmt
-                target=ctx.output("meshes",filename)
-                if fmt=="glb" and found[0].suffix.lower()==".glb":
-                    shutil.copyfile(found[0],target)
-                else:
-                    mesh.export(target,file_type=fmt)
-                files.append(filename)
-            # Lightweight preview raster without OpenGL.
-            imgpath=ctx.output("previews",safe+"_preview.png")
-            fig=plt.figure(figsize=(5,4),dpi=120)
-            ax=fig.add_subplot(111,projection="3d")
-            xyz=mesh.vertices
-            faces=mesh.faces
-            if len(faces)>9000: faces=faces[np.linspace(0,len(faces)-1,9000).astype(int)]
-            tris=xyz[faces]
-            from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-            poly=Poly3DCollection(tris,alpha=1,linewidth=0.08,edgecolor="#202937")
-            poly.set_facecolor("#84afcc")
-            ax.add_collection3d(poly)
-            lo=xyz.min(axis=0); hi=xyz.max(axis=0); mid=(lo+hi)/2; extent=max(1e-4,float(np.max(hi-lo)))*.63
-            ax.set(xlim=(mid[0]-extent,mid[0]+extent),ylim=(mid[1]-extent,mid[1]+extent),zlim=(mid[2]-extent,mid[2]+extent))
-            ax.view_init(elev=24,azim=43)
-            ax.set_axis_off()
-            fig.tight_layout(pad=0)
-            fig.savefig(imgpath,transparent=False,facecolor="#eaf0f5")
-            plt.close(fig)
-            elapsed=round(time.monotonic()-t0,2)
-            row=dict(object=key,variation=v+1,model=model,source_views=len(sources),primary_image=sources[0]["name"],vertices=len(mesh.vertices),faces=len(mesh.faces),watertight=bool(mesh.is_watertight),duration_s=elapsed,formats=";".join(files),preview=safe+"_preview.png")
-            rows.append(row)
-            records.append(dict(row,source_images=[x["name"] for x in sources],warning=("Only first view used; no multi-view fusion" if len(sources)>1 else None)))
-            finished+=1
-            update("completed","Finished %s — %d vertices, %d faces" %(safe,len(mesh.vertices),len(mesh.faces)),10+int(80*finished/total),object=key,completed=finished,total=total)
-    path=ctx.output("table","models.csv")
-    with open(path,"w",newline="",encoding="utf-8") as fp:
-        w=csv.DictWriter(fp,fieldnames=list(rows[0].keys()))
-        w.writeheader(); w.writerows(rows)
-    ctx.write_json("metadata","generation.json",dict(model=model,quality=quality,batch_mode=batch,objects=len(groups),variations=variants,outputs=records,multiview_fusion=False))
-    hb_stop.set()
-    update("done","Finished generating %d mesh assets. Review previews and download formats below."%len(rows),100,completed=len(rows),total=len(rows))
-    return {"result":{"generated":len(rows),"objects":len(groups)}}
+            out = out_root / ("%s_%d.glb" % (o["safe"], v))
+            jobs.append({"views": {k: str(im["path"]) for k, im in o["views"].items()}, "seed": seed0 + v, "out": str(out)})
+            index.append((o, v, out))
+    vram = __import__("torch").cuda.get_device_properties(0).total_memory / 1e9
+    cfg = {"repo": str(repo), "model": spec["repo"], "subfolder": spec["turbo"] if q["turbo"] else spec["sub"], "flashvdm": q["turbo"],
+           "multiview": spec["views"] > 1, "steps": q["steps"], "octree": q["octree"], "faces": q["faces"],
+           "chunks": 20000 if vram >= 10 else 8000, "jobs": jobs}
+    cfg_path = out_root / "hy3d_jobs.json"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    script = out_root / "hy3d_run.py"
+    script.write_text(HY_RUNNER, encoding="utf-8")
+    update("loading", "Loading %s (the first time downloads it from Hugging Face, a few GB)…" % spec["repo"], 12)
+    times, state = {}, {"done": 0}
+
+    def on_line(line):
+        if line.startswith("ESASIM done"):
+            _, _, n, secs = line.split()
+            times[int(n)] = float(secs)
+            state["done"] += 1
+            update("generating", "Shape %d of %d done (%.0f s)." % (state["done"], len(jobs), float(secs)), 15 + 75 * state["done"] / len(jobs))
+        elif line.startswith("ESASIM"):
+            update("loading" if "loading" in line else "generating", line[7:][:160], None)
+            if "loading" in line:
+                update("generating", "Generating shape 1 of %d…" % len(jobs), 15)
+        elif "Traceback" in line or "Error" in line:
+            ctx.log("[model] " + line[:400])
+    stream(ctx, [sys.executable, str(script), str(cfg_path)], env, repo, on_line)
+    return [(o, v, out, times.get(i, 0.0)) for i, (o, v, out) in enumerate(index)]
+
+
+# ------------------------------------------------------------------------------------------------ preview
+def render_preview(mesh, path, size=640):
+    """A shaded picture of the mesh from three quarters, drawn with Matplotlib (no OpenGL on a service account)."""
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import PolyCollection
+    v = np.asarray(mesh.vertices, dtype=float)
+    f = np.asarray(mesh.faces)
+    if len(f) > 60000:
+        f = f[np.random.default_rng(0).choice(len(f), 60000, replace=False)]
+    v = v - (v.min(0) + v.max(0)) / 2
+    az, el = np.radians(35), np.radians(20)
+    ry = np.array([[np.cos(az), 0, np.sin(az)], [0, 1, 0], [-np.sin(az), 0, np.cos(az)]])
+    rx = np.array([[1, 0, 0], [0, np.cos(el), -np.sin(el)], [0, np.sin(el), np.cos(el)]])
+    p = v @ ry.T @ rx.T
+    tri = p[f]
+    n = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
+    light = np.array([0.35, 0.55, 0.75])
+    light /= np.linalg.norm(light)
+    shade = 0.28 + 0.72 * np.abs(n @ light)
+    base = np.tile([0.70, 0.74, 0.80], (len(f), 1))
+    vc = getattr(mesh.visual, "vertex_colors", None) if getattr(mesh.visual, "kind", None) == "vertex" else None
+    if vc is not None and len(vc) == len(mesh.vertices):
+        base = np.asarray(vc, dtype=float)[f][:, :, :3].mean(1) / 255.0
+    col = np.clip(base * shade[:, None], 0, 1)
+    order = np.argsort(tri[:, :, 2].mean(1))                        # far to near
+    fig = plt.figure(figsize=(size / 100, size / 100), dpi=100)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.add_collection(PolyCollection(tri[order][:, :, :2], facecolors=col[order], edgecolors=col[order], linewidths=0.15))
+    span = max(np.ptp(p[:, 0]), np.ptp(p[:, 1])) * 0.56 + 1e-6
+    cx, cy = (p[:, 0].min() + p[:, 0].max()) / 2, (p[:, 1].min() + p[:, 1].max()) / 2
+    ax.set_xlim(cx - span, cx + span)
+    ax.set_ylim(cy - span, cy + span)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.patch.set_facecolor("#eef2f6")
+    fig.savefig(path, facecolor=fig.get_facecolor())
+    plt.close(fig)
