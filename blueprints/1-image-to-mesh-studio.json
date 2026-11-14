@@ -5,8 +5,8 @@
     },
     "name": "1 · Image to mesh studio",
     "description": "Upload images and grouped batches in the View, choose an open image-to-mesh model, generate mesh formats with per-object previews, details, and live progress.",
-    "published_version": 9,
-    "updated": "2026-11-13 20:01:08",
+    "published_version": 10,
+    "updated": "2026-11-14 15:54:08",
     "graph": {
         "nodes": [
             {
@@ -15,16 +15,16 @@
                 "x": 0,
                 "y": 160,
                 "params": {
-                    "launch": false,
-                    "images_payload": "",
                     "model": "TripoSR",
-                    "batch_mode": "independent",
                     "quality": "balanced",
                     "candidates": 1,
+                    "seed": 1234,
                     "formats": "glb,obj,stl,ply",
-                    "cleanup": false
+                    "image_urls": "https://raw.githubusercontent.com/VAST-AI-Research/TripoSR/main/examples/chair.png\nhttps://raw.githubusercontent.com/Tencent-Hunyuan/Hunyuan3D-2/main/assets/demo.png",
+                    "run_without_view": true,
+                    "launch": false
                 },
-                "title": "Mesh generator · gated inference"
+                "title": "Mesh generator"
             },
             {
                 "id": "studio",
@@ -32,7 +32,7 @@
                 "x": 550,
                 "y": 0,
                 "params": [],
-                "title": "START HERE · Upload, select and generate"
+                "title": "START HERE · Pictures, model, Generate meshes"
             },
             {
                 "id": "viewer",
@@ -60,14 +60,25 @@
         ],
         "edges": [
             {
-                "id": "generator.meshes>studio.meshes",
+                "id": "generator.glb>studio.glb",
                 "from": {
                     "node": "generator",
-                    "port": "meshes"
+                    "port": "glb"
                 },
                 "to": {
                     "node": "studio",
-                    "port": "meshes"
+                    "port": "glb"
+                }
+            },
+            {
+                "id": "generator.exports>studio.exports",
+                "from": {
+                    "node": "generator",
+                    "port": "exports"
+                },
+                "to": {
+                    "node": "studio",
+                    "port": "exports"
                 }
             },
             {
@@ -104,10 +115,10 @@
                 }
             },
             {
-                "id": "generator.meshes>viewer.scene",
+                "id": "generator.glb>viewer.scene",
                 "from": {
                     "node": "generator",
-                    "port": "meshes"
+                    "port": "glb"
                 },
                 "to": {
                     "node": "viewer",
