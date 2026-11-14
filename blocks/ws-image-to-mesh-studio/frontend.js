@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 3 · view, JavaScript: function render(ctx)
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 4 · view, JavaScript: function render(ctx)
 // Choose photos and a model, press Generate meshes: pictures go to the run at full quality; shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-14
@@ -260,10 +260,23 @@ function render(ctx) {
             function (e) { btn.textContent = label; notice = 'Download failed: ' + ((e && e.message) || 'file not available'); paint(); })
       .then(function () { btn.disabled = false; });
   }
+  // ctx.rows may give the rows, a promise of them, or nothing yet: keep the last list it gave
+  var rowCache = [], rowAsked = '';
+  function tableRows() {
+    var files = ((ctx.input('details') || {}).files || []), sig = files.map(function (f) { return f.id; }).join(',');
+    var r;
+    try { r = ctx.rows('details'); } catch (e) { r = null; }
+    if (Array.isArray(r)) rowCache = r;
+    else if (r && typeof r.then === 'function' && rowAsked !== sig) {
+      rowAsked = sig;
+      r.then(function (x) { if (Array.isArray(x)) { rowCache = x; results(); } }, function () {});
+    } else if (r && Array.isArray(r.rows)) rowCache = r.rows;
+    return rowCache;
+  }
   function results() {
     var all = [].concat((ctx.input('glb') || {}).files || [], (ctx.input('exports') || {}).files || []);
     var previews = (ctx.input('previews') || {}).files || [];
-    var rows = ctx.rows('details') || [];
+    var rows = tableRows();
     var groups = {};
     all.forEach(function (f) { var k = f.name.replace(/\.(glb|obj|stl|ply)$/i, ''); (groups[k] = groups[k] || []).push(f); });
     var box = $('results'), keys = Object.keys(groups).sort();
