@@ -5,8 +5,8 @@
     },
     "name": "1 · Image to mesh studio",
     "description": "Upload images and grouped batches in the View, choose an open image-to-mesh model, generate mesh formats with per-object previews, details, and live progress.",
-    "published_version": 14,
-    "updated": "2026-11-14 16:17:00",
+    "published_version": 15,
+    "updated": "2026-11-14 16:17:08",
     "graph": {
         "nodes": [
             {
@@ -15,13 +15,13 @@
                 "x": 0,
                 "y": 160,
                 "params": {
-                    "model": "TripoSR",
+                    "model": "Hunyuan3D-2 mini",
                     "quality": "balanced",
                     "candidates": 1,
                     "seed": 1234,
                     "formats": "glb,obj,stl,ply",
-                    "image_urls": "https://raw.githubusercontent.com/Tencent-Hunyuan/Hunyuan3D-2/main/assets/demo.png",
-                    "run_without_view": true,
+                    "image_urls": "",
+                    "run_without_view": false,
                     "launch": false
                 },
                 "title": "Mesh generator"
