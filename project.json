@@ -24,7 +24,7 @@
         },
         {
             "id": "ws-image-to-mesh-studio",
-            "version": 5,
+            "version": 6,
             "name": "Image to Mesh Studio"
         }
     ]

@@ -1,6 +1,6 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 5 · view, JavaScript: function render(ctx)
-// Choose photos and a model, press Generate meshes: pictures go to the run at full quality; shaded previews and GLB/OBJ/STL/PLY downloads.
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 6 · view, JavaScript: function render(ctx)
+// Choose photos and a model, press Generate meshes: pictures travel in the run's own settings; shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-14
 //
@@ -15,10 +15,10 @@
 // EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 // ── end of EsaSim block header ────────────────────────────────────────
 
-/* Mesh Studio: choose pictures, a model and a quality, press Generate meshes. The pictures (up to 1024 px) are kept in
- * the view's saved state, the run is started with a small manifest, and when the generator asks for them they are sent
- * to the running block in pieces (ctx.send), resent if any piece is missing. Results: a shaded preview of each mesh
- * and Download buttons for GLB, OBJ, STL and PLY. */
+/* Mesh Studio: choose pictures, a model and a quality, press Generate meshes. The pictures (re-encoded as JPEG, up to
+ * 1024 px) travel inside the run's own settings (compact upload), so no live connection to the run is needed. The older
+ * live transfer (pieces sent with ctx.send when the generator asks) is kept as a fallback. Results: a shaded preview of
+ * each mesh and Download buttons for GLB, OBJ, STL and PLY. */
 function render(ctx) {
   var MAX_SIDE = 1024, PIECE = 45000, MAX_PICS = 24;
   var VIEWS = ['front', 'left', 'back', 'right'];
@@ -28,7 +28,7 @@ function render(ctx) {
     'Hunyuan3D-2 multi-view': 'Two to four photos of the SAME object from the front, left, back and right, fused into one shape (Tencent, 1.1B). Mark each photo\'s side below. Same licence as Hunyuan3D-2 mini.'
   };
   var st = ctx.state || {};
-  var settings = Object.assign({ model: 'Hunyuan3D-2 mini', quality: 'balanced', candidates: 1 }, st.settings || {});
+  var settings = Object.assign({ model: 'Hunyuan3D-2 mini', quality: 'balanced', candidates: 1, compact: true }, st.settings || {});
   if (!MODELS[settings.model]) settings.model = 'Hunyuan3D-2 mini';
   var sources = Array.isArray(st.sources) ? st.sources.filter(function (s) { return s && s.data; }) : [];
   var session = st.session || '', manifest = st.manifest || null;
@@ -49,7 +49,7 @@ function render(ctx) {
     + '<label class="viz-small">Quality<select id="ms-quality" class="viz-in" style="display:block;width:100%;margin-top:5px"><option value="fast">Fast</option><option value="balanced">Balanced</option><option value="high">High (slower)</option></select></label>'
     + '<label class="viz-small" id="ms-varlabel">Variations per object<input id="ms-var" class="viz-in" type="number" min="1" max="4" style="display:block;width:100%;box-sizing:border-box;margin-top:5px"></label></div>'
     + '<div id="ms-info" class="viz-small viz-muted" style="padding:9px 10px;border-radius:8px;background:var(--panel-2)"></div>'
-    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="ms-go" class="viz-btn primary" style="padding:10px 18px;font-weight:650">Generate meshes</button><span id="ms-hint" class="viz-small viz-muted"></span></div></div>'
+    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="ms-go" class="viz-btn primary" style="padding:10px 18px;font-weight:650">Generate meshes</button><button id="ms-compact" class="viz-btn" type="button" title="Sends the pictures (up to 1024 px, JPEG) inside the run\'s own settings. Generate meshes does this by default">Send compactly</button><span id="ms-hint" class="viz-small viz-muted"></span></div></div>'
     + '<div class="viz-tile" style="display:flex;flex-direction:column;gap:8px;padding:13px"><div style="display:flex;gap:10px;align-items:center"><div id="ms-spin" style="display:none;width:24px;height:24px;flex:none;border:3px solid #adb8c54d;border-top-color:var(--accent,#2f4ae0);border-radius:50%;animation:msspin .8s linear infinite"></div><div style="flex:1;min-width:0"><strong id="ms-phase">Ready</strong><div id="ms-msg" class="viz-small viz-muted">Nothing runs until you press Generate meshes.</div></div><b id="ms-pct" class="viz-small">0%</b></div>'
     + '<div style="height:7px;background:#adb8c52b;border-radius:8px;overflow:hidden"><div id="ms-bar" style="width:0%;height:100%;background:var(--accent,#2f4ae0);transition:width .25s"></div></div>'
     + '<div id="ms-events" class="viz-small viz-muted" style="max-height:130px;overflow:auto"></div><style>@keyframes msspin{to{transform:rotate(360deg)}}</style></div>'
@@ -179,7 +179,9 @@ function render(ctx) {
     for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
     return crypto.subtle.digest('SHA-256', u).then(function (d) { return Array.from(new Uint8Array(d)).map(function (x) { return x.toString(16).padStart(2, '0'); }).join(''); }).catch(function () { return ''; });
   }
+  $('compact').onclick = startCompact;
   $('go').onclick = function () {
+    if (settings.compact) { startCompact(); return; }               // default: the pictures go in the run's settings
     if (busy || (ctx.run && ctx.run.active)) return;
     var bad = problems(); if (bad) { notice = bad; paint(); return; }
     busy = true; notice = 'Preparing the pictures…'; paint();
@@ -192,21 +194,68 @@ function render(ctx) {
       sentAt = {}; seenReq = {}; cards = {}; $('results').replaceChildren();
       return persist().then(function () {
         return ctx.run({ params: { generator: { launch: true, run_without_view: false, session: session, upload_manifest: JSON.stringify(manifest),
-          model: settings.model, quality: settings.quality, candidates: settings.candidates } } });
+          compact_count: 0, compact_len: 0, model: settings.model, quality: settings.quality, candidates: settings.candidates } } });
       });
     }).then(function () { busy = false; notice = ''; paint(); }, function (e) {
       busy = false; notice = (e && e.message) || 'Could not start the run.'; paint();
     });
   };
 
-  // The generator asks for the pictures (stage awaiting_upload, naming them and the pieces still missing): send them.
-  // The request carries its own upload session, so this works even if the view restarted and lost its own copy.
+  // Compact upload: the pictures, re-encoded as JPEG, travel in the run's own settings (up to SLOTS pieces of SLOT
+  // characters): no live messages needed.
+  var SLOTS = 48, SLOT = 4000;
+  function shrink(s, side, q) {
+    return new Promise(function (resolve) {
+      var im = new Image();
+      im.onload = function () {
+        var k = Math.min(1, side / Math.max(im.width, im.height)), c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k));
+        var g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', q));
+      };
+      im.onerror = function () { resolve(''); };
+      im.src = s.data;
+    });
+  }
+  function compactPayload() {
+    var tries = [[1024, 0.88], [768, 0.85], [640, 0.82], [512, 0.8], [448, 0.75], [384, 0.7], [320, 0.65]], n = 0;
+    function attempt() {
+      var t = tries[n];
+      return Promise.all(sources.map(function (s) { return shrink(s, t[0], t[1]); })).then(function (datas) {
+        var json = JSON.stringify(sources.map(function (s, i) {
+          return { name: s.name, data: datas[i], view: multi() ? (s.view || 'front') : '', object: multi() ? (s.object || 'object') : '' };
+        }));
+        if (json.length <= SLOTS * SLOT) return { json: json, side: t[0] };
+        n++;
+        if (n >= tries.length) throw new Error('Too many pictures for one run: generate a few at a time.');
+        return attempt();
+      });
+    }
+    return attempt();
+  }
+  function startCompact() {
+    if (busy || (ctx.run && ctx.run.active)) return;
+    var bad = problems(); if (bad) { notice = bad; paint(); return; }
+    busy = true; notice = 'Preparing the pictures…'; paint();
+    compactPayload().then(function (r) {
+      var gen = { launch: true, run_without_view: false, session: '', upload_manifest: '', compact_count: Math.ceil(r.json.length / SLOT), compact_len: r.json.length,
+                  model: settings.model, quality: settings.quality, candidates: settings.candidates };
+      for (var k = 0; k < SLOTS; k++) gen['c' + String(k).padStart(2, '0')] = r.json.slice(k * SLOT, (k + 1) * SLOT);
+      cards = {}; $('results').replaceChildren();
+      settings.compact = true; persist();
+      sendInfo = 'Pictures sent with the run (' + sources.length + ' at up to ' + r.side + ' px).';
+      return ctx.run({ params: { generator: gen } });
+    }).then(function () { busy = false; notice = ''; paint(); }, function (e) { busy = false; notice = (e && e.message) || 'Could not start the run.'; paint(); });
+  }
+
+  // Live transfer (fallback): the generator asks for the pictures (stage awaiting_upload, naming them and the pieces
+  // still missing) and they are sent as messages.
   var sendInfo = '';
   function serve(items) {
-    if (sending || !(ctx.run && ctx.run.active)) return;
+    if (sending) return;
     var req = null;
     for (var i = items.length - 1; i >= 0; i--) {
-      if (items[i].data.stage === 'upload_complete') return;
+      if (items[i].data.stage === 'upload_complete' || items[i].data.stage === 'upload_failed') return;
       if (items[i].data.stage === 'awaiting_upload') { req = items[i].data; break; }
     }
     if (!req || !Array.isArray(req.missing)) return;
@@ -225,7 +274,10 @@ function render(ctx) {
         var s = sources[m[0]]; if (!s) return;
         var b = b64of(s), parts = Math.max(1, Math.ceil(b.length / piece));
         sentAt[m[0] + ':' + m[1]] = Date.now();
-        return Promise.resolve(ctx.send('mesh_upload', { session: sid, i: m[0], part: m[1], parts: parts, b64: b.slice(m[1] * piece, (m[1] + 1) * piece) }))
+        var call;
+        try { call = ctx.send('mesh_upload', { session: sid, i: m[0], part: m[1], parts: parts, b64: b.slice(m[1] * piece, (m[1] + 1) * piece) }); }
+        catch (e) { return Promise.reject(e); }
+        return Promise.race([Promise.resolve(call), new Promise(function (_, no) { setTimeout(function () { no(new Error('no answer from EsaSim in 15 s')); }, 15000); })])
           .then(function () { sent++; });
       });
     });
@@ -241,13 +293,15 @@ function render(ctx) {
     serve(items);
     var bad = problems();
     $('go').disabled = active || !!bad;
-    $('hint').textContent = notice || (active && sendInfo ? sendInfo : '') || (active ? 'Working… keep this view open until the pictures are sent.' : bad || 'Ready: ' + sources.length + ' picture' + (sources.length === 1 ? '' : 's') + '.');
+    $('compact').disabled = active || !!bad;
+    if (items.some(function (x) { return x.data.stage === 'upload_failed'; }) && !settings.compact) { settings.compact = true; persist(); }
+    $('hint').textContent = notice || (active && sendInfo ? sendInfo : '') || (active ? 'Working…' : bad || 'Ready: ' + sources.length + ' picture' + (sources.length === 1 ? '' : 's') + '.');
     $('info').textContent = MODELS[settings.model];
     $('varlabel').style.display = settings.model === 'TripoSR' ? 'none' : '';
     var last = items.length ? items[items.length - 1].data : null;
     var pct = last && isFinite(+last.percent) ? Math.max(0, Math.min(100, +last.percent)) : 0;
     var failed = !active && ctx.run && ['failed', 'lost', 'canceled'].indexOf(ctx.run.status) >= 0;
-    var names = { awaiting_upload: 'Sending the pictures', upload_complete: 'Pictures received', installing: 'Installing (first time only)', loading: 'Loading the model',
+    var names = { awaiting_upload: 'Sending the pictures', upload_failed: 'Live transfer failed: press Generate meshes again', upload_complete: 'Pictures received', installing: 'Installing (first time only)', loading: 'Loading the model',
                   generating: 'Generating', exported: 'Exporting', done: 'Done', idle: 'Ready', ready: 'Ready to generate', preparing: 'Preparing' };
     $('spin').style.display = active ? 'block' : 'none';
     $('phase').textContent = failed ? 'Generation stopped' : last && last.stage ? (names[last.stage] || last.stage) : active ? 'Starting…' : 'Ready';
