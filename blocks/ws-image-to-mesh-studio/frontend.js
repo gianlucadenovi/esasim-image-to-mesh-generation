@@ -1,6 +1,6 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 11 · view, JavaScript: function render(ctx)
-// Choose photos and a model, press Generate meshes: pictures travel in the run's own settings; shaded previews and GLB/OBJ/STL/PLY downloads.
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 12 · view, JavaScript: function render(ctx)
+// Choose photos and a model, press Generate meshes: several photos of one object become one mesh (multi-view); shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-14
 //
@@ -23,9 +23,9 @@ function render(ctx) {
   var MAX_SIDE = 640, PIECE = 45000, MAX_PICS = 24;
   var VIEWS = ['front', 'left', 'back', 'right'];
   var MODELS = {
-    'Hunyuan3D-2 mini': 'Best shape from one photo (Tencent, 0.6B, about 6 GB of GPU memory). Grey mesh without colour. Tencent Hunyuan Community licence: not for use in the EU, the UK or South Korea.',
-    'TripoSR': 'Fast coloured mesh from one photo (VAST AI, MIT licence). Softer geometry than Hunyuan3D-2.',
-    'Hunyuan3D-2 multi-view': 'Two to four photos of the SAME object from the front, left, back and right, fused into one shape (Tencent, 1.1B). Mark each photo\'s side below. Same licence as Hunyuan3D-2 mini.'
+    'Hunyuan3D-2 mini': 'Best shape from one photo (Tencent, 0.6B, about 6 GB of GPU memory). Grey mesh without colour. Several pictures make several separate meshes. Tencent Hunyuan Community licence: not for use in the EU, the UK or South Korea.',
+    'TripoSR': 'Fast coloured mesh from one photo (VAST AI, MIT licence). Softer geometry than Hunyuan3D-2. Several pictures make several separate meshes.',
+    'Hunyuan3D-2 multi-view': 'ONE mesh from up to four photos of the same object: front, left, back and right (Tencent, 1.1B). Check each photo\'s side below; extra photos are marked "not used". Same licence as Hunyuan3D-2 mini.'
   };
   var st = ctx.state || {};
   var settings = Object.assign({ model: 'Hunyuan3D-2 mini', quality: 'balanced', candidates: 1, compact: true }, st.settings || {});
@@ -39,7 +39,7 @@ function render(ctx) {
     + '<div><div style="font-size:22px;font-weight:750">Image to Mesh Studio</div><div class="viz-small viz-muted">Photos in, 3D meshes out: preview them here, turn them in the 3D view, download GLB, OBJ, STL or PLY.</div></div>'
     + '<div class="viz-tile" style="display:flex;flex-direction:column;gap:10px;padding:13px"><strong>1 · Pictures</strong>'
     + '<label id="ms-drop" style="border:2px dashed var(--line,#8b98ac);border-radius:12px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;text-align:center">'
-    + '<span style="font-size:24px">↑</span><strong>Choose or drop pictures</strong><span class="viz-small viz-muted">PNG, JPEG or WebP · one object per photo, centred, plain background works best · up to 24</span>'
+    + '<span style="font-size:24px">↑</span><strong>Choose or drop pictures</strong><span class="viz-small viz-muted">PNG, JPEG or WebP · one object, centred, plain background works best · several pictures of one object make one mesh</span>'
     + '<input id="ms-file" type="file" accept="image/png,image/jpeg,image/webp" multiple style="display:none"></label>'
     + '<div id="ms-pics" style="display:flex;gap:8px;flex-wrap:wrap"></div>'
     + '<div style="display:flex;gap:8px;align-items:center"><button id="ms-clear" class="viz-btn" type="button">Remove all</button><span id="ms-count" class="viz-small viz-muted"></span></div></div>'
@@ -107,6 +107,10 @@ function render(ctx) {
       });
     });
     chain.then(function () {
+      if (sources.length >= 2 && !multi()) {                      // several pictures: one object from several sides
+        settings.model = 'Hunyuan3D-2 multi-view'; $('model').value = settings.model;
+        notice = 'Switched to Hunyuan3D-2 multi-view: your pictures are fused into ONE mesh. Check each picture\'s side below. (To make a separate mesh from every picture instead, choose another model.)';
+      }
       autoViews(); paintPics(); paint();
       persist().catch(function () { notice = 'These pictures are too large to keep in the view: remove some and try again.'; paint(); });
     });
@@ -118,6 +122,7 @@ function render(ctx) {
       if (s.view) return;
       var o = s.object || 'object';
       for (var i = 0; i < VIEWS.length; i++) if (!used[o + '|' + VIEWS[i]]) { s.view = VIEWS[i]; used[o + '|' + VIEWS[i]] = 1; return; }
+      s.view = 'skip';                                              // all four sides taken: left out unless chosen
     });
   }
   function paintPics() {
@@ -133,9 +138,10 @@ function render(ctx) {
       card.append(img, cap, x);
       if (multi()) {
         var sel = document.createElement('select'); sel.className = 'viz-in viz-small'; sel.style.margin = '0 4px 4px';
-        VIEWS.forEach(function (v) { var o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+        VIEWS.concat(['skip']).forEach(function (v) { var o = document.createElement('option'); o.value = v; o.textContent = v === 'skip' ? 'not used' : v; sel.appendChild(o); });
+        if (s.view === 'skip') card.style.opacity = '0.55';
         sel.value = s.view || 'front';
-        sel.onchange = function () { s.view = sel.value; persist(); paint(); };
+        sel.onchange = function () { s.view = sel.value; persist(); paintPics(); paint(); };
         var obj = document.createElement('input'); obj.className = 'viz-in viz-small'; obj.placeholder = 'object'; obj.value = s.object || '';
         obj.title = 'Pictures with the same object name are fused into one mesh'; obj.style.cssText = 'margin:0 4px 5px;box-sizing:border-box;width:calc(100% - 8px)';
         obj.oninput = function () { s.object = obj.value.trim(); persist(); paint(); };
@@ -159,15 +165,21 @@ function render(ctx) {
   $('var').onchange = function () { settings.candidates = Math.max(1, Math.min(4, Math.floor(+this.value) || 1)); this.value = settings.candidates; persist(); };
 
   function advice() {
-    if (!multi() && sources.length > 1 && sources.length <= 4)
-      return 'Each picture becomes its own mesh with this model. For one object seen from several sides, choose Hunyuan3D-2 multi-view.';
+    if (!multi() && sources.length > 1)
+      return 'Each picture becomes its own mesh with this model. For ONE mesh of one object seen from several sides, choose Hunyuan3D-2 multi-view.';
+    if (multi()) {
+      var n = chosen().length, skip = sources.length - n;
+      return 'One mesh from ' + n + ' picture' + (n === 1 ? '' : 's') + (skip ? ' (' + skip + ' not used: at most one per side)' : '') + '.';
+    }
     return '';
   }
   function problems() {
     if (!sources.length) return 'Add at least one picture.';
     if (multi()) {
       var objs = {};
-      sources.forEach(function (s) { var o = s.object || 'object'; (objs[o] = objs[o] || []).push(s.view || 'front'); });
+      var usedPics = 0;
+      sources.forEach(function (s) { if (s.view === 'skip') return; usedPics++; var o = s.object || 'object'; (objs[o] = objs[o] || []).push(s.view || 'front'); });
+      if (!usedPics) return 'Mark at least one picture as front.';
       for (var o in objs) {
         var v = objs[o];
         if (v.length > 4) return 'Object "' + o + '" has more than 4 pictures: one per side at most.';
@@ -229,12 +241,14 @@ function render(ctx) {
   // settings when together they pass about 64 kB (run 346: 88 kB arrived as nothing), so the pictures stay under 48 kB (39 kB is known to work).
   var MAX_PAYLOAD = 48000;
   function budget() { return Math.max(8000, Math.min(MAX_PAYLOAD, +settings.size_budget || MAX_PAYLOAD)); }
+  function chosen() { return multi() ? sources.filter(function (s) { return s.view !== 'skip'; }) : sources; }
   function compactPayload() {
+    var pics = chosen();
     var tries = [[512, 0.9], [512, 0.82], [512, 0.74], [448, 0.74], [384, 0.72], [352, 0.7], [320, 0.66], [288, 0.62], [256, 0.6]], n = 0, limit = budget();
     function attempt() {
       var t = tries[n];
-      return Promise.all(sources.map(function (s) { return shrink(s, t[0], t[1]); })).then(function (datas) {
-        var json = JSON.stringify(sources.map(function (s, i) {
+      return Promise.all(pics.map(function (s) { return shrink(s, t[0], t[1]); })).then(function (datas) {
+        var json = JSON.stringify(pics.map(function (s, i) {
           return { name: s.name, data: datas[i], view: multi() ? (s.view || 'front') : '', object: multi() ? (s.object || 'object') : '' };
         }));
         if (json.length <= limit) return { json: json, side: t[0] };
@@ -271,7 +285,7 @@ function render(ctx) {
     try { ctx.saveState({ settings: settings, sources: sources, session: session, manifest: manifest }, true); } catch (e) { /* the run still starts */ }
     var call, done = false;
     try { call = ctx.run({ params: { generator: gen } }); } catch (e) { call = Promise.reject(e); }   // called straight from the click
-    sendInfo = 'Pictures sent with the run (' + sources.length + ' at up to ' + r.side + ' px, ' + Math.round(r.json.length / 1000) + ' kB).';
+    sendInfo = 'Pictures sent with the run (' + chosen().length + ' at up to ' + r.side + ' px, ' + Math.round(r.json.length / 1000) + ' kB).';
     function refused(why) {
       if (done) return; done = true; busy = false;
       var sizeIssue = /20 s|large|long|size|bytes|too big/i.test(why);
@@ -408,5 +422,6 @@ function render(ctx) {
 
   ctx.on('update', function () { paint(); results(); });
   ctx.on('run', function () { notice = ''; paint(); results(); });
+  if (multi()) autoViews();
   paintPics(); paint(); results(); changed();
 }

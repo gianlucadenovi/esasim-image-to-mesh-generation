@@ -1,14 +1,14 @@
 # Image to Mesh Studio
 
-Choose photos and a model, press Generate meshes: pictures travel in the run's own settings; shaded previews and GLB/OBJ/STL/PLY downloads.
+Choose photos and a model, press Generate meshes: several photos of one object become one mesh (multi-view); shaded previews and GLB/OBJ/STL/PLY downloads.
 
-Press Run once to open the studio, then drop pictures, choose TripoSR, Hunyuan3D-2 mini or Hunyuan3D-2 multi-view and a quality, and press Generate meshes. The pictures go with the run itself. For one object seen from several sides choose Hunyuan3D-2 multi-view, mark each picture's side (front, left, back, right) and give them the same object name.
+Press Run once to open the studio, then drop pictures and press Generate meshes. Several pictures of one object switch to Hunyuan3D-2 multi-view, which fuses up to four of them (front, left, back, right) into one mesh: check each picture's side; extra pictures are marked "not used". To make a separate mesh from every picture, choose Hunyuan3D-2 mini or TripoSR instead.
 
 An [EsaSim](https://esacode.com/) blueprint block: a view that draws in the browser, in JavaScript (`frontend.js`, `function render(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-image-to-mesh-studio` · version 11 |
+| Block | `ws-image-to-mesh-studio` · version 12 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 
