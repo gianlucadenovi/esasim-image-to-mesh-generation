@@ -108,7 +108,7 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Blueprints in this repository
 
-- [1 · Image to mesh studio](blueprints/1-image-to-mesh-studio.json) · 4 blocks · version 10
+- [1 · Image to mesh studio](blueprints/1-image-to-mesh-studio.json) · 4 blocks · version 11
 
 ### Workspace blocks it uses
 
