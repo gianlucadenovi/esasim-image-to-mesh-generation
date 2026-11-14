@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 6 · view, JavaScript: function render(ctx)
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 7 · view, JavaScript: function render(ctx)
 // Choose photos and a model, press Generate meshes: pictures travel in the run's own settings; shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-14
@@ -16,9 +16,9 @@
 // ── end of EsaSim block header ────────────────────────────────────────
 
 /* Mesh Studio: choose pictures, a model and a quality, press Generate meshes. The pictures (re-encoded as JPEG, up to
- * 1024 px) travel inside the run's own settings (compact upload), so no live connection to the run is needed. The older
- * live transfer (pieces sent with ctx.send when the generator asks) is kept as a fallback. Results: a shaded preview of
- * each mesh and Download buttons for GLB, OBJ, STL and PLY. */
+ * 1024 px) are packed ahead of time and travel inside the run's own settings, so the click starts the run at once and
+ * no live connection to the run is needed. The older live transfer (ctx.send) is kept as a fallback. Results: a shaded
+ * preview of each mesh and Download buttons for GLB, OBJ, STL and PLY. */
 function render(ctx) {
   var MAX_SIDE = 1024, PIECE = 45000, MAX_PICS = 24;
   var VIEWS = ['front', 'left', 'back', 'right'];
@@ -49,7 +49,7 @@ function render(ctx) {
     + '<label class="viz-small">Quality<select id="ms-quality" class="viz-in" style="display:block;width:100%;margin-top:5px"><option value="fast">Fast</option><option value="balanced">Balanced</option><option value="high">High (slower)</option></select></label>'
     + '<label class="viz-small" id="ms-varlabel">Variations per object<input id="ms-var" class="viz-in" type="number" min="1" max="4" style="display:block;width:100%;box-sizing:border-box;margin-top:5px"></label></div>'
     + '<div id="ms-info" class="viz-small viz-muted" style="padding:9px 10px;border-radius:8px;background:var(--panel-2)"></div>'
-    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="ms-go" class="viz-btn primary" style="padding:10px 18px;font-weight:650">Generate meshes</button><button id="ms-compact" class="viz-btn" type="button" title="Sends the pictures (up to 1024 px, JPEG) inside the run\'s own settings. Generate meshes does this by default">Send compactly</button><span id="ms-hint" class="viz-small viz-muted"></span></div></div>'
+    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="ms-go" class="viz-btn primary" style="padding:10px 18px;font-weight:650">Generate meshes</button><button id="ms-compact" class="viz-btn" type="button" style="display:none" title="Sends the pictures (up to 1024 px, JPEG) inside the run\'s own settings. Generate meshes does this by default">Send compactly</button><span id="ms-hint" class="viz-small viz-muted"></span></div></div>'
     + '<div class="viz-tile" style="display:flex;flex-direction:column;gap:8px;padding:13px"><div style="display:flex;gap:10px;align-items:center"><div id="ms-spin" style="display:none;width:24px;height:24px;flex:none;border:3px solid #adb8c54d;border-top-color:var(--accent,#2f4ae0);border-radius:50%;animation:msspin .8s linear infinite"></div><div style="flex:1;min-width:0"><strong id="ms-phase">Ready</strong><div id="ms-msg" class="viz-small viz-muted">Nothing runs until you press Generate meshes.</div></div><b id="ms-pct" class="viz-small">0%</b></div>'
     + '<div style="height:7px;background:#adb8c52b;border-radius:8px;overflow:hidden"><div id="ms-bar" style="width:0%;height:100%;background:var(--accent,#2f4ae0);transition:width .25s"></div></div>'
     + '<div id="ms-events" class="viz-small viz-muted" style="max-height:130px;overflow:auto"></div><style>@keyframes msspin{to{transform:rotate(360deg)}}</style></div>'
@@ -59,11 +59,13 @@ function render(ctx) {
   function persist() {
     if (!ctx.saveState) return Promise.resolve();
     try {
+      changed();
       var r = ctx.saveState({ settings: settings, sources: sources, session: session, manifest: manifest }, true);
       return r && r.then ? r : Promise.resolve();
     } catch (e) { return Promise.reject(e); }
   }
   function multi() { return settings.model === 'Hunyuan3D-2 multi-view'; }
+  function changed() { setTimeout(function () { prepack().catch(function () {}); }, 0); }
 
   // ---------------------------------------------------------------------------------------------- pictures
   function viewOf(name) { var m = /[_\-\s](front|left|back|right)$/i.exec(String(name).replace(/\.[^.]+$/, '')); return m ? m[1].toLowerCase() : ''; }
@@ -201,7 +203,7 @@ function render(ctx) {
     });
   };
 
-  // Compact upload: the pictures, re-encoded as JPEG, travel in the run's own settings (up to SLOTS pieces of SLOT
+  // Compact upload: the pictures, re-encoded smaller, travel in the run's own settings (up to SLOTS pieces of 4000
   // characters): no live messages needed.
   var SLOTS = 48, SLOT = 4000;
   function shrink(s, side, q) {
@@ -233,23 +235,37 @@ function render(ctx) {
     }
     return attempt();
   }
+  // The payload is prepared ahead (whenever the pictures or their sides change), so a click starts the run at once:
+  // EsaSim only lets a view start a run straight from the click, not after slow work.
+  var packed = null, packKey = '', packing = null;
+  function payloadKey() { return settings.model + '|' + sources.map(function (s) { return s.name + ':' + s.data.length + ':' + (s.view || '') + ':' + (s.object || ''); }).join('|'); }
+  function prepack() {
+    var key = payloadKey();
+    if (!sources.length) { packed = null; packKey = key; return Promise.resolve(null); }
+    if (packed && packKey === key) return Promise.resolve(packed);
+    var p = packing = compactPayload().then(function (r) { if (p === packing) { packed = r; packKey = key; packing = null; if (/^Preparing the pictures/.test(notice)) notice = ''; paint(); } return r; },
+      function (e) { if (p === packing) { packing = null; notice = e.message; paint(); } throw e; });
+    return p;
+  }
   function startCompact() {
     if (busy || (ctx.run && ctx.run.active)) return;
     var bad = problems(); if (bad) { notice = bad; paint(); return; }
-    busy = true; notice = 'Preparing the pictures…'; paint();
-    compactPayload().then(function (r) {
-      var gen = { launch: true, run_without_view: false, session: '', upload_manifest: '', compact_count: Math.ceil(r.json.length / SLOT), compact_len: r.json.length,
-                  model: settings.model, quality: settings.quality, candidates: settings.candidates };
-      for (var k = 0; k < SLOTS; k++) gen['c' + String(k).padStart(2, '0')] = r.json.slice(k * SLOT, (k + 1) * SLOT);
-      cards = {}; $('results').replaceChildren();
-      settings.compact = true; persist();
-      sendInfo = 'Pictures sent with the run (' + sources.length + ' at up to ' + r.side + ' px).';
-      return ctx.run({ params: { generator: gen } });
-    }).then(function () { busy = false; notice = ''; paint(); }, function (e) { busy = false; notice = (e && e.message) || 'Could not start the run.'; paint(); });
+    if (!packed || packKey !== payloadKey()) { notice = 'Preparing the pictures… press Generate meshes again in a moment.'; prepack().catch(function () {}); paint(); return; }
+    var r = packed;
+    var gen = { launch: true, run_without_view: false, session: '', upload_manifest: '', compact_count: Math.ceil(r.json.length / SLOT), compact_len: r.json.length,
+                model: settings.model, quality: settings.quality, candidates: settings.candidates };
+    for (var k = 0; k < SLOTS; k++) gen['c' + String(k).padStart(2, '0')] = r.json.slice(k * SLOT, (k + 1) * SLOT);
+    busy = true; notice = 'Starting the run…'; paint();
+    var call;
+    try { call = ctx.run({ params: { generator: gen } }); } catch (e) { call = Promise.reject(e); }   // called straight from the click
+    sendInfo = 'Pictures sent with the run (' + sources.length + ' at up to ' + r.side + ' px, ' + Math.round(r.json.length / 1000) + ' kB).';
+    Promise.resolve(call).then(function () { busy = false; notice = ''; cards = {}; $('results').replaceChildren(); paint(); },
+      function (e) { busy = false; notice = 'EsaSim did not start the run: ' + ((e && e.message) || String(e)); paint(); });
+    settings.compact = true; persist().catch(function () {});
   }
 
-  // Live transfer (fallback): the generator asks for the pictures (stage awaiting_upload, naming them and the pieces
-  // still missing) and they are sent as messages.
+  // The generator asks for the pictures (stage awaiting_upload, naming them and the pieces still missing): send them.
+  // The request carries its own upload session, so this works even if the view restarted and lost its own copy.
   var sendInfo = '';
   function serve(items) {
     if (sending) return;
@@ -295,7 +311,7 @@ function render(ctx) {
     $('go').disabled = active || !!bad;
     $('compact').disabled = active || !!bad;
     if (items.some(function (x) { return x.data.stage === 'upload_failed'; }) && !settings.compact) { settings.compact = true; persist(); }
-    $('hint').textContent = notice || (active && sendInfo ? sendInfo : '') || (active ? 'Working…' : bad || 'Ready: ' + sources.length + ' picture' + (sources.length === 1 ? '' : 's') + '.');
+    $('hint').textContent = notice || (active && sendInfo ? sendInfo : '') || (active ? 'Working…' : bad || (packing ? 'Preparing the pictures…' : '') || 'Ready: ' + sources.length + ' picture' + (sources.length === 1 ? '' : 's') + '.');
     $('info').textContent = MODELS[settings.model];
     $('varlabel').style.display = settings.model === 'TripoSR' ? 'none' : '';
     var last = items.length ? items[items.length - 1].data : null;
@@ -304,8 +320,8 @@ function render(ctx) {
     var names = { awaiting_upload: 'Sending the pictures', upload_failed: 'Live transfer failed: press Generate meshes again', upload_complete: 'Pictures received', installing: 'Installing (first time only)', loading: 'Loading the model',
                   generating: 'Generating', exported: 'Exporting', done: 'Done', idle: 'Ready', ready: 'Ready to generate', preparing: 'Preparing' };
     $('spin').style.display = active ? 'block' : 'none';
-    $('phase').textContent = failed ? 'Generation stopped' : last && last.stage ? (names[last.stage] || last.stage) : active ? 'Starting…' : 'Ready';
-    $('msg').textContent = failed ? 'Run ' + ctx.run.status + ': open the run\'s log for the reason.' : last && last.message ? last.message : active ? 'Waiting for the GPU machine…' : 'Nothing runs until you press Generate meshes.';
+    $('phase').textContent = /^EsaSim did not start/.test(notice) ? 'Run not started' : failed ? 'Generation stopped' : last && last.stage ? (names[last.stage] || last.stage) : active ? 'Starting…' : 'Ready';
+    $('msg').textContent = /^EsaSim did not start/.test(notice) ? notice : failed ? 'Run ' + ctx.run.status + ': open the run\'s log for the reason.' : last && last.message ? last.message : active ? 'Waiting for the GPU machine…' : 'Nothing runs until you press Generate meshes.';
     $('bar').style.width = pct + '%'; $('pct').textContent = Math.round(pct) + '%';
     var ev = $('events'); ev.replaceChildren();
     items.filter(function (x) { return !x.data.heartbeat; }).slice(-6).reverse().forEach(function (x) {
@@ -372,5 +388,5 @@ function render(ctx) {
 
   ctx.on('update', function () { paint(); results(); });
   ctx.on('run', function () { notice = ''; paint(); results(); });
-  paintPics(); paint(); results();
+  paintPics(); paint(); results(); changed();
 }
