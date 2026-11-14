@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 8 · view, JavaScript: function render(ctx)
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 9 · view, JavaScript: function render(ctx)
 // Choose photos and a model, press Generate meshes: pictures travel in the run's own settings; shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-14
@@ -195,17 +195,17 @@ function render(ctx) {
       });
       sentAt = {}; seenReq = {}; cards = {}; $('results').replaceChildren();
       return persist().then(function () {
-        return ctx.run({ params: { generator: { launch: true, run_without_view: false, session: session, upload_manifest: JSON.stringify(manifest),
-          compact_count: 0, compact_len: 0, model: settings.model, quality: settings.quality, candidates: settings.candidates } } });
+        return ctx.run({ params: { generator: { launch: true, session: session, upload_manifest: JSON.stringify(manifest),
+          compact_count: 0, model: settings.model, quality: settings.quality, candidates: settings.candidates } } });
       });
     }).then(function () { busy = false; notice = ''; paint(); }, function (e) {
       busy = false; notice = (e && e.message) || 'Could not start the run.'; paint();
     });
   };
 
-  // Compact upload: the pictures, re-encoded smaller, travel in the run's own settings (up to SLOTS pieces of 4000
-  // characters): no live messages needed.
-  var SLOTS = 48, SLOT = 4000;
+  // Compact upload: the pictures, re-encoded smaller, travel in the run's own settings (pieces of SLOT characters):
+  // no live messages needed.
+  var SLOTS = 48, SLOT = 4000, RUN_SLOTS = 24;
   function shrink(s, side, q) {
     return new Promise(function (resolve) {
       var im = new Image();
@@ -219,9 +219,9 @@ function render(ctx) {
       im.src = s.data;
     });
   }
-  // Both models look at the object at about 512 px, so 512 px pictures lose nothing. The total size starts at the
-  // budget below and halves each time EsaSim refuses or does not answer a start.
-  function budget() { return Math.max(8000, Math.min(SLOTS * SLOT, +settings.budget || 96000)); }
+  // Both models look at the object at about 512 px, so 512 px pictures lose nothing. The total size is at most the
+  // budget below; it halves when EsaSim refuses a start for its size.
+  function budget() { return Math.max(8000, Math.min(RUN_SLOTS * SLOT, +settings.size_budget || RUN_SLOTS * SLOT)); }
   function compactPayload() {
     var tries = [[512, 0.9], [512, 0.8], [448, 0.75], [384, 0.7], [320, 0.65], [256, 0.6]], n = 0, limit = budget();
     function attempt() {
@@ -255,17 +255,19 @@ function render(ctx) {
     var bad = problems(); if (bad) { notice = bad; paint(); return; }
     if (!packed || packKey !== payloadKey()) { notice = 'Preparing the pictures… press Generate meshes again in a moment.'; prepack().catch(function () {}); paint(); return; }
     var r = packed;
-    var gen = { launch: true, run_without_view: false, session: '', upload_manifest: '', compact_count: Math.ceil(r.json.length / SLOT), compact_len: r.json.length,
-                model: settings.model, quality: settings.quality, candidates: settings.candidates };
-    for (var k = 0; k < SLOTS; k++) gen['c' + String(k).padStart(2, '0')] = r.json.slice(k * SLOT, (k + 1) * SLOT);
+    // EsaSim takes at most 30 settings per run: 6 here plus only the pieces actually used (at most RUN_SLOTS)
+    var count = Math.ceil(r.json.length / SLOT);
+    var gen = { launch: true, compact_count: count, compact_len: r.json.length, model: settings.model, quality: settings.quality, candidates: settings.candidates };
+    for (var k = 0; k < count; k++) gen['c' + String(k).padStart(2, '0')] = r.json.slice(k * SLOT, (k + 1) * SLOT);
     busy = true; notice = 'Starting the run…'; paint();
     var call, done = false;
     try { call = ctx.run({ params: { generator: gen } }); } catch (e) { call = Promise.reject(e); }   // called straight from the click
     sendInfo = 'Pictures sent with the run (' + sources.length + ' at up to ' + r.side + ' px, ' + Math.round(r.json.length / 1000) + ' kB).';
     function refused(why) {
       if (done) return; done = true; busy = false;
-      if (budget() > 8000) { settings.budget = Math.floor(budget() / 2); packed = null; persist().catch(function () {}); }
-      notice = 'EsaSim did not start the run (' + why + '). Smaller pictures are being prepared: press Generate meshes again.';
+      var sizeIssue = /20 s|large|long|size|bytes|too big/i.test(why);
+      if (sizeIssue && budget() > 8000) { settings.size_budget = Math.floor(budget() / 2); packed = null; persist().catch(function () {}); }
+      notice = 'EsaSim did not start the run (' + why + ').' + (sizeIssue ? ' Smaller pictures are being prepared: press Generate meshes again.' : '');
       paint();
     }
     setTimeout(function () { if (!done && !(ctx.run && ctx.run.active)) refused('no answer in 20 s'); }, 20000);
