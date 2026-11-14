@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 4 · view, JavaScript: function render(ctx)
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 5 · view, JavaScript: function render(ctx)
 // Choose photos and a model, press Generate meshes: pictures go to the run at full quality; shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-14
@@ -199,43 +199,51 @@ function render(ctx) {
     });
   };
 
-  // the generator asks for the pictures (stage awaiting_upload, with the pieces still missing): send them
+  // The generator asks for the pictures (stage awaiting_upload, naming them and the pieces still missing): send them.
+  // The request carries its own upload session, so this works even if the view restarted and lost its own copy.
+  var sendInfo = '';
   function serve(items) {
-    if (!session || !manifest || sending || !(ctx.run && ctx.run.active)) return;
+    if (sending || !(ctx.run && ctx.run.active)) return;
     var req = null;
     for (var i = items.length - 1; i >= 0; i--) {
-      var d = items[i].data;
-      if (d.session === session && (d.stage === 'awaiting_upload' || d.stage === 'upload_complete')) { req = items[i]; break; }
+      if (items[i].data.stage === 'upload_complete') return;
+      if (items[i].data.stage === 'awaiting_upload') { req = items[i].data; break; }
     }
-    if (!req || req.data.stage === 'upload_complete' || !Array.isArray(req.data.missing)) return;
-    var key = String(req.t) + '|' + req.data.received;
-    if (seenReq[key]) return; seenReq[key] = 1;
-    var now = Date.now(), todo = req.data.missing.filter(function (m) { return !(sentAt[m[0] + ':' + m[1]] > now - 8000); });
+    if (!req || !Array.isArray(req.missing)) return;
+    var names = Array.isArray(req.names) ? req.names : null;
+    if (names && (names.length !== sources.length || names.some(function (n, k) { return sources[k].name !== n; }))) {
+      sendInfo = 'The run asks for ' + names.length + ' picture(s) that this view no longer holds: press Generate meshes again.';
+      return;
+    }
+    var piece = +req.piece || PIECE, sid = req.session || session;
+    var now = Date.now(), todo = req.missing.filter(function (m) { return !(sentAt[m[0] + ':' + m[1]] > now - 8000); });
     if (!todo.length) return;
     sending = true;
-    var chain = Promise.resolve();
+    var chain = Promise.resolve(), sent = 0;
     todo.forEach(function (m) {
       chain = chain.then(function () {
         var s = sources[m[0]]; if (!s) return;
-        var b = b64of(s), piece = b.slice(m[1] * PIECE, (m[1] + 1) * PIECE);
+        var b = b64of(s), parts = Math.max(1, Math.ceil(b.length / piece));
         sentAt[m[0] + ':' + m[1]] = Date.now();
-        return ctx.send('mesh_upload', { session: session, i: m[0], part: m[1], parts: manifest[m[0]].parts, b64: piece });
+        return Promise.resolve(ctx.send('mesh_upload', { session: sid, i: m[0], part: m[1], parts: parts, b64: b.slice(m[1] * piece, (m[1] + 1) * piece) }))
+          .then(function () { sent++; });
       });
     });
-    chain.catch(function (e) { notice = 'Sending the pictures: ' + ((e && e.message) || 'failed'); })
+    chain.then(function () { sendInfo = 'Sent ' + sent + ' piece(s) to the run; waiting for it to confirm…'; },
+               function (e) { sendInfo = 'Sending the pictures failed: ' + ((e && e.message) || String(e)); })
       .then(function () { sending = false; paint(); });
   }
 
   // ---------------------------------------------------------------------------------------------- progress
   function paint() {
     var active = !!(busy || (ctx.run && ctx.run.active));
-    var bad = problems();
-    $('go').disabled = active || !!bad;
-    $('hint').textContent = notice || (active ? 'Working… keep this view open until the pictures are sent.' : bad || 'Ready: ' + sources.length + ' picture' + (sources.length === 1 ? '' : 's') + '.');
-    $('info').textContent = MODELS[settings.model];
-    $('varlabel').style.display = settings.model === 'TripoSR' ? 'none' : '';
     var items = ((ctx.input('status') || {}).stream || []).filter(function (x) { return x.channel === 'mesh_status' && x.data && typeof x.data === 'object'; });
     serve(items);
+    var bad = problems();
+    $('go').disabled = active || !!bad;
+    $('hint').textContent = notice || (active && sendInfo ? sendInfo : '') || (active ? 'Working… keep this view open until the pictures are sent.' : bad || 'Ready: ' + sources.length + ' picture' + (sources.length === 1 ? '' : 's') + '.');
+    $('info').textContent = MODELS[settings.model];
+    $('varlabel').style.display = settings.model === 'TripoSR' ? 'none' : '';
     var last = items.length ? items[items.length - 1].data : null;
     var pct = last && isFinite(+last.percent) ? Math.max(0, Math.min(100, +last.percent)) : 0;
     var failed = !active && ctx.run && ['failed', 'lost', 'canceled'].indexOf(ctx.run.status) >= 0;

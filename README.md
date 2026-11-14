@@ -59,6 +59,6 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 ### Workspace blocks it uses
 
 - [Image to mesh generator](blocks/ws-image-to-mesh-generator) · version 13
-- [Image to Mesh Studio](blocks/ws-image-to-mesh-studio) · version 4
+- [Image to Mesh Studio](blocks/ws-image-to-mesh-studio) · version 5
 
 Keys pasted in blocks (secret settings) are not saved here. Datasets, results and the team stay in EsaSim.
