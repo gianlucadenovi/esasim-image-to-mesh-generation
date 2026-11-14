@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 7 · view, JavaScript: function render(ctx)
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 8 · view, JavaScript: function render(ctx)
 // Choose photos and a model, press Generate meshes: pictures travel in the run's own settings; shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-14
@@ -16,7 +16,7 @@
 // ── end of EsaSim block header ────────────────────────────────────────
 
 /* Mesh Studio: choose pictures, a model and a quality, press Generate meshes. The pictures (re-encoded as JPEG, up to
- * 1024 px) are packed ahead of time and travel inside the run's own settings, so the click starts the run at once and
+ * 512 px) are packed ahead of time and travel inside the run's own settings, so the click starts the run at once and
  * no live connection to the run is needed. The older live transfer (ctx.send) is kept as a fallback. Results: a shaded
  * preview of each mesh and Download buttons for GLB, OBJ, STL and PLY. */
 function render(ctx) {
@@ -49,7 +49,7 @@ function render(ctx) {
     + '<label class="viz-small">Quality<select id="ms-quality" class="viz-in" style="display:block;width:100%;margin-top:5px"><option value="fast">Fast</option><option value="balanced">Balanced</option><option value="high">High (slower)</option></select></label>'
     + '<label class="viz-small" id="ms-varlabel">Variations per object<input id="ms-var" class="viz-in" type="number" min="1" max="4" style="display:block;width:100%;box-sizing:border-box;margin-top:5px"></label></div>'
     + '<div id="ms-info" class="viz-small viz-muted" style="padding:9px 10px;border-radius:8px;background:var(--panel-2)"></div>'
-    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="ms-go" class="viz-btn primary" style="padding:10px 18px;font-weight:650">Generate meshes</button><button id="ms-compact" class="viz-btn" type="button" style="display:none" title="Sends the pictures (up to 1024 px, JPEG) inside the run\'s own settings. Generate meshes does this by default">Send compactly</button><span id="ms-hint" class="viz-small viz-muted"></span></div></div>'
+    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="ms-go" class="viz-btn primary" style="padding:10px 18px;font-weight:650">Generate meshes</button><button id="ms-compact" class="viz-btn" type="button" style="display:none" title="Sends the pictures (up to 512 px, JPEG) inside the run\'s own settings. Generate meshes does this by default">Send compactly</button><span id="ms-hint" class="viz-small viz-muted"></span></div></div>'
     + '<div class="viz-tile" style="display:flex;flex-direction:column;gap:8px;padding:13px"><div style="display:flex;gap:10px;align-items:center"><div id="ms-spin" style="display:none;width:24px;height:24px;flex:none;border:3px solid #adb8c54d;border-top-color:var(--accent,#2f4ae0);border-radius:50%;animation:msspin .8s linear infinite"></div><div style="flex:1;min-width:0"><strong id="ms-phase">Ready</strong><div id="ms-msg" class="viz-small viz-muted">Nothing runs until you press Generate meshes.</div></div><b id="ms-pct" class="viz-small">0%</b></div>'
     + '<div style="height:7px;background:#adb8c52b;border-radius:8px;overflow:hidden"><div id="ms-bar" style="width:0%;height:100%;background:var(--accent,#2f4ae0);transition:width .25s"></div></div>'
     + '<div id="ms-events" class="viz-small viz-muted" style="max-height:130px;overflow:auto"></div><style>@keyframes msspin{to{transform:rotate(360deg)}}</style></div>'
@@ -219,15 +219,18 @@ function render(ctx) {
       im.src = s.data;
     });
   }
+  // Both models look at the object at about 512 px, so 512 px pictures lose nothing. The total size starts at the
+  // budget below and halves each time EsaSim refuses or does not answer a start.
+  function budget() { return Math.max(8000, Math.min(SLOTS * SLOT, +settings.budget || 96000)); }
   function compactPayload() {
-    var tries = [[1024, 0.88], [768, 0.85], [640, 0.82], [512, 0.8], [448, 0.75], [384, 0.7], [320, 0.65]], n = 0;
+    var tries = [[512, 0.9], [512, 0.8], [448, 0.75], [384, 0.7], [320, 0.65], [256, 0.6]], n = 0, limit = budget();
     function attempt() {
       var t = tries[n];
       return Promise.all(sources.map(function (s) { return shrink(s, t[0], t[1]); })).then(function (datas) {
         var json = JSON.stringify(sources.map(function (s, i) {
           return { name: s.name, data: datas[i], view: multi() ? (s.view || 'front') : '', object: multi() ? (s.object || 'object') : '' };
         }));
-        if (json.length <= SLOTS * SLOT) return { json: json, side: t[0] };
+        if (json.length <= limit) return { json: json, side: t[0] };
         n++;
         if (n >= tries.length) throw new Error('Too many pictures for one run: generate a few at a time.');
         return attempt();
@@ -238,7 +241,7 @@ function render(ctx) {
   // The payload is prepared ahead (whenever the pictures or their sides change), so a click starts the run at once:
   // EsaSim only lets a view start a run straight from the click, not after slow work.
   var packed = null, packKey = '', packing = null;
-  function payloadKey() { return settings.model + '|' + sources.map(function (s) { return s.name + ':' + s.data.length + ':' + (s.view || '') + ':' + (s.object || ''); }).join('|'); }
+  function payloadKey() { return settings.model + '|' + budget() + '|' + sources.map(function (s) { return s.name + ':' + s.data.length + ':' + (s.view || '') + ':' + (s.object || ''); }).join('|'); }
   function prepack() {
     var key = payloadKey();
     if (!sources.length) { packed = null; packKey = key; return Promise.resolve(null); }
@@ -256,12 +259,18 @@ function render(ctx) {
                 model: settings.model, quality: settings.quality, candidates: settings.candidates };
     for (var k = 0; k < SLOTS; k++) gen['c' + String(k).padStart(2, '0')] = r.json.slice(k * SLOT, (k + 1) * SLOT);
     busy = true; notice = 'Starting the run…'; paint();
-    var call;
+    var call, done = false;
     try { call = ctx.run({ params: { generator: gen } }); } catch (e) { call = Promise.reject(e); }   // called straight from the click
     sendInfo = 'Pictures sent with the run (' + sources.length + ' at up to ' + r.side + ' px, ' + Math.round(r.json.length / 1000) + ' kB).';
-    Promise.resolve(call).then(function () { busy = false; notice = ''; cards = {}; $('results').replaceChildren(); paint(); },
-      function (e) { busy = false; notice = 'EsaSim did not start the run: ' + ((e && e.message) || String(e)); paint(); });
-    settings.compact = true; persist().catch(function () {});
+    function refused(why) {
+      if (done) return; done = true; busy = false;
+      if (budget() > 8000) { settings.budget = Math.floor(budget() / 2); packed = null; persist().catch(function () {}); }
+      notice = 'EsaSim did not start the run (' + why + '). Smaller pictures are being prepared: press Generate meshes again.';
+      paint();
+    }
+    setTimeout(function () { if (!done && !(ctx.run && ctx.run.active)) refused('no answer in 20 s'); }, 20000);
+    Promise.resolve(call).then(function () { if (done) return; done = true; busy = false; notice = ''; cards = {}; $('results').replaceChildren(); paint(); },
+      function (e) { refused((e && e.message) || String(e)); });
   }
 
   // The generator asks for the pictures (stage awaiting_upload, naming them and the pieces still missing): send them.
@@ -320,8 +329,8 @@ function render(ctx) {
     var names = { awaiting_upload: 'Sending the pictures', upload_failed: 'Live transfer failed: press Generate meshes again', upload_complete: 'Pictures received', installing: 'Installing (first time only)', loading: 'Loading the model',
                   generating: 'Generating', exported: 'Exporting', done: 'Done', idle: 'Ready', ready: 'Ready to generate', preparing: 'Preparing' };
     $('spin').style.display = active ? 'block' : 'none';
-    $('phase').textContent = /^EsaSim did not start/.test(notice) ? 'Run not started' : failed ? 'Generation stopped' : last && last.stage ? (names[last.stage] || last.stage) : active ? 'Starting…' : 'Ready';
-    $('msg').textContent = /^EsaSim did not start/.test(notice) ? notice : failed ? 'Run ' + ctx.run.status + ': open the run\'s log for the reason.' : last && last.message ? last.message : active ? 'Waiting for the GPU machine…' : 'Nothing runs until you press Generate meshes.';
+    $('phase').textContent = /^EsaSim did not start/.test(notice) ? 'Run not started' : !active && notice ? 'Note' : failed ? 'Generation stopped' : last && last.stage ? (names[last.stage] || last.stage) : active ? 'Starting…' : 'Ready';
+    $('msg').textContent = !active && notice ? notice : failed ? 'Run ' + ctx.run.status + ': open the run\'s log for the reason.' : last && last.message ? last.message : active ? 'Waiting for the GPU machine…' : 'Nothing runs until you press Generate meshes.';
     $('bar').style.width = pct + '%'; $('pct').textContent = Math.round(pct) + '%';
     var ev = $('events'); ev.replaceChildren();
     items.filter(function (x) { return !x.data.heartbeat; }).slice(-6).reverse().forEach(function (x) {

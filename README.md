@@ -54,11 +54,11 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Blueprints in this repository
 
-- [1 · Image to mesh studio](blueprints/1-image-to-mesh-studio.json) · 4 blocks · version 17
+- [1 · Image to mesh studio](blueprints/1-image-to-mesh-studio.json) · 4 blocks · version 18
 
 ### Workspace blocks it uses
 
 - [Image to mesh generator](blocks/ws-image-to-mesh-generator) · version 14
-- [Image to Mesh Studio](blocks/ws-image-to-mesh-studio) · version 7
+- [Image to Mesh Studio](blocks/ws-image-to-mesh-studio) · version 8
 
 Keys pasted in blocks (secret settings) are not saved here. Datasets, results and the team stay in EsaSim.

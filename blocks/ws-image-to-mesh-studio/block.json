@@ -7,7 +7,7 @@
     "side": "frontend",
     "customizable": true,
     "summary": "Choose photos and a model, press Generate meshes: pictures travel in the run's own settings; shaded previews and GLB/OBJ/STL/PLY downloads.",
-    "help": "Drop pictures, choose TripoSR, Hunyuan3D-2 mini or Hunyuan3D-2 multi-view and a quality, press Generate meshes. The pictures go with the run itself (resized to at most 1024 px), so the view can be closed once the run has started. For multi-view, mark each picture's side (front, left, back, right) and give the pictures of one object the same object name.",
+    "help": "Press Run once to open the studio, then drop pictures, choose TripoSR, Hunyuan3D-2 mini or Hunyuan3D-2 multi-view and a quality, and press Generate meshes. The pictures go with the run itself (at 512 px, the size the models work at). For multi-view, mark each picture's side (front, left, back, right) and give the pictures of one object the same object name.",
     "inputs": [
         {
             "id": "glb",
@@ -68,6 +68,6 @@
         "run"
     ],
     "esasim": {
-        "version": 7
+        "version": 8
     }
 }
