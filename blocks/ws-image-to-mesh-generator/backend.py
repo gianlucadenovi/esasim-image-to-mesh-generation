@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 13 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 14 · machine block, Python: def run(ctx)
 # Photos to 3D meshes on an NVIDIA GPU: TripoSR (coloured), Hunyuan3D-2 mini (detailed shape) or Hunyuan3D-2 multi-view (front/left/back/right fused); GLB/OBJ/STL/PLY, shaded previews.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-14
@@ -24,6 +24,56 @@
 #   launch      bool      Requested by Mesh Studio (View only) = false
 #   session     text      Upload session (View only) = ""
 #   upload_manifest textarea  Upload manifest (View only) = ""
+#   compact_count number    Compact upload pieces (View only) = 0
+#   compact_len number    Compact upload length (View only) = 0
+#   c00         textarea  Compact upload 1 (View only) = ""
+#   c01         textarea  Compact upload 2 (View only) = ""
+#   c02         textarea  Compact upload 3 (View only) = ""
+#   c03         textarea  Compact upload 4 (View only) = ""
+#   c04         textarea  Compact upload 5 (View only) = ""
+#   c05         textarea  Compact upload 6 (View only) = ""
+#   c06         textarea  Compact upload 7 (View only) = ""
+#   c07         textarea  Compact upload 8 (View only) = ""
+#   c08         textarea  Compact upload 9 (View only) = ""
+#   c09         textarea  Compact upload 10 (View only) = ""
+#   c10         textarea  Compact upload 11 (View only) = ""
+#   c11         textarea  Compact upload 12 (View only) = ""
+#   c12         textarea  Compact upload 13 (View only) = ""
+#   c13         textarea  Compact upload 14 (View only) = ""
+#   c14         textarea  Compact upload 15 (View only) = ""
+#   c15         textarea  Compact upload 16 (View only) = ""
+#   c16         textarea  Compact upload 17 (View only) = ""
+#   c17         textarea  Compact upload 18 (View only) = ""
+#   c18         textarea  Compact upload 19 (View only) = ""
+#   c19         textarea  Compact upload 20 (View only) = ""
+#   c20         textarea  Compact upload 21 (View only) = ""
+#   c21         textarea  Compact upload 22 (View only) = ""
+#   c22         textarea  Compact upload 23 (View only) = ""
+#   c23         textarea  Compact upload 24 (View only) = ""
+#   c24         textarea  Compact upload 25 (View only) = ""
+#   c25         textarea  Compact upload 26 (View only) = ""
+#   c26         textarea  Compact upload 27 (View only) = ""
+#   c27         textarea  Compact upload 28 (View only) = ""
+#   c28         textarea  Compact upload 29 (View only) = ""
+#   c29         textarea  Compact upload 30 (View only) = ""
+#   c30         textarea  Compact upload 31 (View only) = ""
+#   c31         textarea  Compact upload 32 (View only) = ""
+#   c32         textarea  Compact upload 33 (View only) = ""
+#   c33         textarea  Compact upload 34 (View only) = ""
+#   c34         textarea  Compact upload 35 (View only) = ""
+#   c35         textarea  Compact upload 36 (View only) = ""
+#   c36         textarea  Compact upload 37 (View only) = ""
+#   c37         textarea  Compact upload 38 (View only) = ""
+#   c38         textarea  Compact upload 39 (View only) = ""
+#   c39         textarea  Compact upload 40 (View only) = ""
+#   c40         textarea  Compact upload 41 (View only) = ""
+#   c41         textarea  Compact upload 42 (View only) = ""
+#   c42         textarea  Compact upload 43 (View only) = ""
+#   c43         textarea  Compact upload 44 (View only) = ""
+#   c44         textarea  Compact upload 45 (View only) = ""
+#   c45         textarea  Compact upload 46 (View only) = ""
+#   c46         textarea  Compact upload 47 (View only) = ""
+#   c47         textarea  Compact upload 48 (View only) = ""
 # Runs on  NVIDIA GPU. Return a dict to fill the "result" output.
 # Packages torch[cuda], numpy, Pillow, trimesh, matplotlib (installed by the worker with pip when missing)
 # EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
@@ -36,10 +86,10 @@ Models
   Hunyuan3D-2 mini (Tencent, 0.6B)       one photo -> detailed shape (no colour)
   Hunyuan3D-2 mv (Tencent, 1.1B)         front/left/back/right photos of one object -> one shape
 
-Pictures come from the Mesh Studio view (sent to this run in pieces as messages, at full quality), from links in
-Image links, or from files wired to the Images input. The model code is cloned once into the machine's cache and run
-in a subprocess with the library versions it was written for (Transformers 4.45), so nothing else on the worker
-changes."""
+Pictures come from the Mesh Studio view (compactly in the run's own settings, or live in pieces as messages), from
+links in Image links, or from files wired to the Images input. The model code is cloned once into the machine's cache
+and run in a subprocess with the library versions it was written for (Transformers 4.45), so nothing else on the
+worker changes."""
 import base64
 import csv
 import hashlib
@@ -107,8 +157,24 @@ def run(ctx):
 
 # ------------------------------------------------------------------------------------------------ pictures
 def receive_upload(ctx, p, update):
-    """The View's pictures: a manifest in the settings, the bytes as messages in pieces. Ask for what is missing
-    until everything is here (the View answers each request)."""
+    """The View's pictures: in the run's own settings (compact upload), or a manifest in the settings and the bytes
+    as messages in pieces, asking for what is missing until everything is here (the View answers each request)."""
+    compact = int(p.get("compact_count") or 0)
+    if compact:                                                    # the pictures came in the run's own settings
+        pieces = [str(p.get("c%02d" % k) or "") for k in range(compact)]
+        data, want = "".join(pieces), int(p.get("compact_len") or 0)
+        if want and len(data) != want:
+            sizes = sorted(set(len(x) for x in pieces[:-1])) if len(pieces) > 1 else [len(pieces[0])]
+            raise RuntimeError("The compact upload arrived cut short: %d of %d characters (setting lengths seen: %s). EsaSim shortens "
+                               "long run settings; tell us this number so the piece size can be lowered." % (len(data), want, sizes))
+        items = json.loads(data)
+        update("upload_complete", "%d picture%s received in the run's settings (compact upload)." % (len(items), "s" if len(items) != 1 else ""), 8)
+        out = []
+        for it in items:
+            raw = str(it.get("data") or "")
+            out.append({"name": str(it.get("name") or "image"), "bytes": base64.b64decode(raw.split(",", 1)[-1]),
+                        "view": str(it.get("view") or ""), "object": str(it.get("object") or "")})
+        return out
     session = str(p.get("session") or "")
     manifest = json.loads(str(p.get("upload_manifest") or "[]"))
     if not session or not manifest:
@@ -167,10 +233,13 @@ def receive_upload(ctx, p, update):
             last_diag = now
             ctx.log("[upload] %d message(s) seen so far (%s); %d for another upload, %d unreadable."
                     % (stats["messages"], ", ".join(sorted(stats["kinds"])) or "none", stats["other_session"], stats["unreadable"]))
+        if stats["messages"] == 0 and now - t0 > 60:
+            update("upload_failed", "No message from the View reached this run in 60 s. Press Generate meshes again (compact upload).", 2, session=session)
+            raise RuntimeError("No message from the View reached this run in 60 s, so live transfer does not work here. Press "
+                               "Generate meshes again: the View now sends the pictures in the run's own settings.")
         if now - t0 > 240:
             raise RuntimeError("The pictures did not reach this run from the View within 4 minutes (%d of %d pieces; %d message(s) "
-                               "seen). Keep the View open after pressing Generate meshes; if it shows a 'Sending the pictures' "
-                               "error, tell us what it says." % (total - len(missing), total, stats["messages"]))
+                               "seen). Keep the View open after pressing Generate meshes." % (total - len(missing), total, stats["messages"]))
         time.sleep(0.4)
     update("upload_complete", "All %d picture%s received." % (len(manifest), "s" if len(manifest) != 1 else ""), 8, session=session)
     out = []

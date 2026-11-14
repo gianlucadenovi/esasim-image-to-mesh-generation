@@ -7,7 +7,7 @@
     "side": "backend",
     "customizable": true,
     "summary": "Photos to 3D meshes on an NVIDIA GPU: TripoSR (coloured), Hunyuan3D-2 mini (detailed shape) or Hunyuan3D-2 multi-view (front/left/back/right fused); GLB/OBJ/STL/PLY, shaded previews.",
-    "help": "Start it from the Mesh Studio view: it sends the chosen pictures to this run at full quality (up to 1024 px). Or, for a run from the blueprint, give Image links (one per line) or wire pictures to Images and turn on Run without the View. Models: TripoSR (MIT, coloured mesh, seconds), Hunyuan3D-2 mini (detailed shape without colour, about 6 GB of GPU memory), Hunyuan3D-2 multi-view (pictures of one object from the front, left, back and right, named like chair_front.png, fused into one shape). Hunyuan3D-2 is under the Tencent Hunyuan Community licence, which does not cover the EU, the UK or South Korea. The model code is cloned once into the machine's cache and runs with its own library versions.",
+    "help": "Start it from the Mesh Studio view. Generate meshes sends the pictures in the run's own settings (compact, up to 1024 px) or live as messages. Or, for a run from the blueprint, give Image links (one per line) or wire pictures to Images and turn on Run without the View. Models: TripoSR (MIT, coloured mesh, seconds), Hunyuan3D-2 mini (detailed shape without colour, about 6 GB of GPU memory), Hunyuan3D-2 multi-view (pictures of one object from the front, left, back and right fused into one shape). Hunyuan3D-2 is under the Tencent Hunyuan Community licence, which does not cover the EU, the UK or South Korea.",
     "inputs": [
         {
             "id": "images",
@@ -127,7 +127,7 @@
             "label": "Run without the View",
             "type": "bool",
             "default": false,
-            "help": "On: a blueprint Run generates from Image links / the Images input. Off: only the View's Generate meshes starts generation"
+            "help": "On: a blueprint Run generates from Image links / the Images input. Off: only the View starts generation"
         },
         {
             "key": "launch",
@@ -146,6 +146,309 @@
             "label": "Upload manifest (View only)",
             "type": "textarea",
             "default": ""
+        },
+        {
+            "key": "compact_count",
+            "label": "Compact upload pieces (View only)",
+            "type": "number",
+            "default": 0,
+            "min": 0,
+            "max": 48
+        },
+        {
+            "key": "compact_len",
+            "label": "Compact upload length (View only)",
+            "type": "number",
+            "default": 0,
+            "min": 0
+        },
+        {
+            "key": "c00",
+            "label": "Compact upload 1 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c01",
+            "label": "Compact upload 2 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c02",
+            "label": "Compact upload 3 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c03",
+            "label": "Compact upload 4 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c04",
+            "label": "Compact upload 5 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c05",
+            "label": "Compact upload 6 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c06",
+            "label": "Compact upload 7 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c07",
+            "label": "Compact upload 8 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c08",
+            "label": "Compact upload 9 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c09",
+            "label": "Compact upload 10 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c10",
+            "label": "Compact upload 11 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c11",
+            "label": "Compact upload 12 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c12",
+            "label": "Compact upload 13 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c13",
+            "label": "Compact upload 14 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c14",
+            "label": "Compact upload 15 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c15",
+            "label": "Compact upload 16 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c16",
+            "label": "Compact upload 17 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c17",
+            "label": "Compact upload 18 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c18",
+            "label": "Compact upload 19 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c19",
+            "label": "Compact upload 20 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c20",
+            "label": "Compact upload 21 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c21",
+            "label": "Compact upload 22 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c22",
+            "label": "Compact upload 23 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c23",
+            "label": "Compact upload 24 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c24",
+            "label": "Compact upload 25 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c25",
+            "label": "Compact upload 26 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c26",
+            "label": "Compact upload 27 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c27",
+            "label": "Compact upload 28 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c28",
+            "label": "Compact upload 29 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c29",
+            "label": "Compact upload 30 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c30",
+            "label": "Compact upload 31 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c31",
+            "label": "Compact upload 32 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c32",
+            "label": "Compact upload 33 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c33",
+            "label": "Compact upload 34 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c34",
+            "label": "Compact upload 35 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c35",
+            "label": "Compact upload 36 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c36",
+            "label": "Compact upload 37 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c37",
+            "label": "Compact upload 38 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c38",
+            "label": "Compact upload 39 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c39",
+            "label": "Compact upload 40 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c40",
+            "label": "Compact upload 41 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c41",
+            "label": "Compact upload 42 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c42",
+            "label": "Compact upload 43 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c43",
+            "label": "Compact upload 44 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c44",
+            "label": "Compact upload 45 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c45",
+            "label": "Compact upload 46 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c46",
+            "label": "Compact upload 47 (View only)",
+            "type": "textarea",
+            "default": ""
+        },
+        {
+            "key": "c47",
+            "label": "Compact upload 48 (View only)",
+            "type": "textarea",
+            "default": ""
         }
     ],
     "hardware": [
@@ -159,6 +462,6 @@
         "matplotlib"
     ],
     "esasim": {
-        "version": 13
+        "version": 14
     }
 }
