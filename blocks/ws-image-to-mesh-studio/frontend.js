@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 10 · view, JavaScript: function render(ctx)
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 11 · view, JavaScript: function render(ctx)
 // Choose photos and a model, press Generate meshes: pictures travel in the run's own settings; shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-14
@@ -15,10 +15,10 @@
 // EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 // ── end of EsaSim block header ────────────────────────────────────────
 
-/* Mesh Studio: choose pictures, a model and a quality, press Generate meshes. The pictures (re-encoded as JPEG, up to
- * 512 px) are packed ahead of time and travel inside the run's own settings, so the click starts the run at once and
- * no live connection to the run is needed. The older live transfer (ctx.send) is kept as a fallback. Results: a shaded
- * preview of each mesh and Download buttons for GLB, OBJ, STL and PLY. */
+/* Mesh Studio: choose pictures, a model and a quality, press Generate meshes. The pictures (re-encoded as WebP or
+ * JPEG, up to 512 px) are packed ahead of time and travel inside the run's own settings, so the click starts the run at
+ * once and no live connection to the run is needed. The older live transfer (ctx.send) is kept as a fallback.
+ * Results: a shaded preview of each mesh and Download buttons for GLB, OBJ, STL and PLY. */
 function render(ctx) {
   var MAX_SIDE = 640, PIECE = 45000, MAX_PICS = 24;
   var VIEWS = ['front', 'left', 'back', 'right'];
@@ -49,7 +49,7 @@ function render(ctx) {
     + '<label class="viz-small">Quality<select id="ms-quality" class="viz-in" style="display:block;width:100%;margin-top:5px"><option value="fast">Fast</option><option value="balanced">Balanced</option><option value="high">High (slower)</option></select></label>'
     + '<label class="viz-small" id="ms-varlabel">Variations per object<input id="ms-var" class="viz-in" type="number" min="1" max="4" style="display:block;width:100%;box-sizing:border-box;margin-top:5px"></label></div>'
     + '<div id="ms-info" class="viz-small viz-muted" style="padding:9px 10px;border-radius:8px;background:var(--panel-2)"></div>'
-    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="ms-go" class="viz-btn primary" style="padding:10px 18px;font-weight:650">Generate meshes</button><button id="ms-compact" class="viz-btn" type="button" style="display:none" title="Sends the pictures (up to 512 px, JPEG) inside the run\'s own settings. Generate meshes does this by default">Send compactly</button><span id="ms-hint" class="viz-small viz-muted"></span></div></div>'
+    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="ms-go" class="viz-btn primary" style="padding:10px 18px;font-weight:650">Generate meshes</button><button id="ms-compact" class="viz-btn" type="button" style="display:none" title="Sends the pictures (up to 512 px) inside the run\'s own settings. Generate meshes does this by default">Send compactly</button><span id="ms-hint" class="viz-small viz-muted"></span></div></div>'
     + '<div class="viz-tile" style="display:flex;flex-direction:column;gap:8px;padding:13px"><div style="display:flex;gap:10px;align-items:center"><div id="ms-spin" style="display:none;width:24px;height:24px;flex:none;border:3px solid #adb8c54d;border-top-color:var(--accent,#2f4ae0);border-radius:50%;animation:msspin .8s linear infinite"></div><div style="flex:1;min-width:0"><strong id="ms-phase">Ready</strong><div id="ms-msg" class="viz-small viz-muted">Nothing runs until you press Generate meshes.</div></div><b id="ms-pct" class="viz-small">0%</b></div>'
     + '<div style="height:7px;background:#adb8c52b;border-radius:8px;overflow:hidden"><div id="ms-bar" style="width:0%;height:100%;background:var(--accent,#2f4ae0);transition:width .25s"></div></div>'
     + '<div id="ms-events" class="viz-small viz-muted" style="max-height:130px;overflow:auto"></div><style>@keyframes msspin{to{transform:rotate(360deg)}}</style></div>'
@@ -158,6 +158,11 @@ function render(ctx) {
   $('quality').onchange = function () { settings.quality = this.value; persist(); };
   $('var').onchange = function () { settings.candidates = Math.max(1, Math.min(4, Math.floor(+this.value) || 1)); this.value = settings.candidates; persist(); };
 
+  function advice() {
+    if (!multi() && sources.length > 1 && sources.length <= 4)
+      return 'Each picture becomes its own mesh with this model. For one object seen from several sides, choose Hunyuan3D-2 multi-view.';
+    return '';
+  }
   function problems() {
     if (!sources.length) return 'Add at least one picture.';
     if (multi()) {
@@ -213,17 +218,19 @@ function render(ctx) {
         var k = Math.min(1, side / Math.max(im.width, im.height)), c = document.createElement('canvas');
         c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k));
         var g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
-        resolve(c.toDataURL('image/jpeg', q));
+        var w = c.toDataURL('image/webp', q);
+        resolve(/^data:image\/webp/.test(w) ? w : c.toDataURL('image/jpeg', q));
       };
       im.onerror = function () { resolve(''); };
       im.src = s.data;
     });
   }
-  // Both models look at the object at about 512 px, so 512 px pictures lose nothing. The total size is at most the
-  // budget below; it halves when EsaSim refuses a start for its size.
-  function budget() { return Math.max(8000, Math.min(RUN_SLOTS * SLOT, +settings.size_budget || RUN_SLOTS * SLOT)); }
+  // Both models look at the object at about 512 px, so 512 px pictures lose nothing. EsaSim drops ALL of a run's
+  // settings when together they pass about 64 kB (run 346: 88 kB arrived as nothing), so the pictures stay under 48 kB (39 kB is known to work).
+  var MAX_PAYLOAD = 48000;
+  function budget() { return Math.max(8000, Math.min(MAX_PAYLOAD, +settings.size_budget || MAX_PAYLOAD)); }
   function compactPayload() {
-    var tries = [[512, 0.9], [512, 0.8], [448, 0.75], [384, 0.7], [320, 0.65], [256, 0.6]], n = 0, limit = budget();
+    var tries = [[512, 0.9], [512, 0.82], [512, 0.74], [448, 0.74], [384, 0.72], [352, 0.7], [320, 0.66], [288, 0.62], [256, 0.6]], n = 0, limit = budget();
     function attempt() {
       var t = tries[n];
       return Promise.all(sources.map(function (s) { return shrink(s, t[0], t[1]); })).then(function (datas) {
@@ -324,7 +331,7 @@ function render(ctx) {
     $('go').disabled = active || !!bad;
     $('compact').disabled = active || !!bad;
     if (items.some(function (x) { return x.data.stage === 'upload_failed'; }) && !settings.compact) { settings.compact = true; persist(); }
-    $('hint').textContent = notice || (active && sendInfo ? sendInfo : '') || (active ? 'Working…' : bad || (packing ? 'Preparing the pictures…' : '') || 'Ready: ' + sources.length + ' picture' + (sources.length === 1 ? '' : 's') + '.');
+    $('hint').textContent = notice || (active && sendInfo ? sendInfo : '') || (active ? 'Working…' : bad || (packing ? 'Preparing the pictures…' : '') || advice() || 'Ready: ' + sources.length + ' picture' + (sources.length === 1 ? '' : 's') + '.');
     $('info').textContent = MODELS[settings.model];
     $('varlabel').style.display = settings.model === 'TripoSR' ? 'none' : '';
     var last = items.length ? items[items.length - 1].data : null;
