@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 12 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 13 · machine block, Python: def run(ctx)
 # Photos to 3D meshes on an NVIDIA GPU: TripoSR (coloured), Hunyuan3D-2 mini (detailed shape) or Hunyuan3D-2 multi-view (front/left/back/right fused); GLB/OBJ/STL/PLY, shaded previews.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-14
@@ -114,33 +114,63 @@ def receive_upload(ctx, p, update):
     if not session or not manifest:
         return []
     total = sum(int(m["parts"]) for m in manifest)
-    got = {}
-    t0 = last_ask = time.time() - 10
-    t0 = time.time()
+    names = [str(m.get("name") or "") for m in manifest]
+    got, stats = {}, {"messages": 0, "other_session": 0, "unreadable": 0, "kinds": set()}
+    last_ask, last_diag, t0 = 0.0, time.time(), time.time()
+
+    def fetch():
+        """ctx.messages(channel) as documented; also the unfiltered queue, in case this worker names channels differently."""
+        out = []
+        for args in ((CHANNEL,), ()):
+            try:
+                r = ctx.messages(*args)
+            except TypeError:
+                continue
+            except Exception as e:
+                stats["kinds"].add("error: %s" % type(e).__name__)
+                continue
+            if r:
+                out.extend(list(r))
+        return out
     while True:
-        try:
-            msgs = ctx.messages(CHANNEL) or []
-        except Exception:
-            msgs = []
-        for m in msgs:
-            d = m.get("data", m) if isinstance(m, dict) else None
-            if not isinstance(d, dict) or str(d.get("session")) != session:
+        for m in fetch():
+            stats["messages"] += 1
+            stats["kinds"].add(type(m).__name__)
+            d = m
+            if isinstance(d, dict) and isinstance(d.get("data"), dict):
+                d = d["data"]
+            if isinstance(d, str):
+                try:
+                    d = json.loads(d)
+                except ValueError:
+                    pass
+            if not isinstance(d, dict) or "b64" not in d:
+                stats["unreadable"] += 1
+                continue
+            if str(d.get("session")) != session:
+                stats["other_session"] += 1
                 continue
             try:
                 got[(int(d["i"]), int(d["part"]))] = str(d["b64"])
             except (KeyError, TypeError, ValueError):
-                continue
+                stats["unreadable"] += 1
         missing = [[int(m["i"]), k] for m in manifest for k in range(int(m["parts"])) if (int(m["i"]), k) not in got]
         if not missing:
             break
         now = time.time()
         if now - last_ask > 3:
             last_ask = now
-            update("awaiting_upload", "Receiving pictures from the View: %d of %d pieces" % (total - len(missing), total),
-                   2 + 6 * (total - len(missing)) / max(1, total), session=session, missing=missing[:300], received=total - len(missing), total=total)
-        if now - t0 > 600:
-            raise RuntimeError("The pictures did not arrive from the View within 10 minutes (%d of %d pieces). Keep the View open "
-                               "while the run starts, then press Generate meshes again." % (total - len(missing), total))
+            update("awaiting_upload", "Waiting for the pictures from the View: %d of %d pieces" % (total - len(missing), total),
+                   2 + 6 * (total - len(missing)) / max(1, total), session=session, names=names, piece=45000,
+                   missing=missing[:300], received=total - len(missing), total=total)
+        if now - last_diag > 30:
+            last_diag = now
+            ctx.log("[upload] %d message(s) seen so far (%s); %d for another upload, %d unreadable."
+                    % (stats["messages"], ", ".join(sorted(stats["kinds"])) or "none", stats["other_session"], stats["unreadable"]))
+        if now - t0 > 240:
+            raise RuntimeError("The pictures did not reach this run from the View within 4 minutes (%d of %d pieces; %d message(s) "
+                               "seen). Keep the View open after pressing Generate meshes; if it shows a 'Sending the pictures' "
+                               "error, tell us what it says." % (total - len(missing), total, stats["messages"]))
         time.sleep(0.4)
     update("upload_complete", "All %d picture%s received." % (len(manifest), "s" if len(manifest) != 1 else ""), 8, session=session)
     out = []

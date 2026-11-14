@@ -1,104 +1,50 @@
-<div align="center">
-
 # Image to Mesh Generation
 
-**From photographs to 3D assets, directly in the EsaSim View. Upload an image or a batch, choose a reconstruction model, generate meshes, inspect them in 3D, and export files ready for downstream workflows.**
+**Photos in, 3D meshes out.** Drop pictures into the Mesh Studio, choose a model, press **Generate meshes**: each object comes back as a mesh you can turn in the 3D view, with a shaded preview and download buttons for GLB, OBJ, STL and PLY. Everything runs on your own machine's NVIDIA GPU.
 
-A View-first 3D reconstruction workspace for producing GLB, OBJ, STL and PLY assets from photographs with locally executed, open-weight models. The interface combines a drag-and-drop uploader, selectable inference engine, batch processing, live progress, a mesh gallery, an interactive 3D viewer, and traceable generation metadata.
+## How to use it
 
-![type](https://img.shields.io/badge/type-Generative%203D-blue) ![language](https://img.shields.io/badge/language-Python-3776AB) ![compute](https://img.shields.io/badge/compute-NVIDIA%20CUDA-76b900) ![formats](https://img.shields.io/badge/formats-GLB%20%7C%20OBJ%20%7C%20STL%20%7C%20PLY-178c8c) ![source](https://img.shields.io/badge/models-Open%20weights-yellow) [![built with](https://img.shields.io/badge/built%20with-EsaSim-0b7285)](https://esacode.com/)
+1. Open [**1 · Image to mesh studio**](https://esacode.com/app/projects/18/flows/59) and switch to **View**.
+2. **Pictures**: drop or choose PNG, JPEG or WebP images. One object per photo, centred, filling most of the frame; a plain background helps (the background is removed automatically; a PNG already cut out keeps its transparency).
+3. **Model** and **Quality** (below), then **Generate meshes**.
+4. Keep the View open for the first seconds: once the run starts on the GPU machine, the View sends it the pictures at full quality (up to 1024 px), piece by piece, and resends anything missing.
+5. The meshes appear in **3 · Meshes** with their preview and **↓ GLB / OBJ / STL / PLY** buttons, in the **3D view** and in the details table.
 
-</div>
+A normal Blueprint **Run** does not generate anything (the generator just reports it is ready) unless you turn on *Run without the View* and give it *Image links* or wire pictures to its *Images* input, for batch work without the View.
 
-## Overview
+## The models
 
-A single photograph shows just one side of an object. An image-to-3D model predicts geometry beyond the visible surface, creates a mesh and optionally reconstructs surface appearance. The result is not a measured CAD model, but it is useful for concept design, visualization, game assets, robotics scenes, digital twins and early-stage simulation pipelines.
-
-**Image upload → Model selection → Generate meshes → 3D preview → Mesh inspection and export.**
-
-To submit work, open [**1 · Image to mesh studio**](https://esacode.com/app/projects/18/flows/59) and switch to **View**. Upload files and click **Generate meshes**. A regular Blueprint **Run** does not launch reconstruction.
-
-## The flow
-
-| Block | Purpose |
-|---|---|
-| **Image to Mesh Studio** | Drag-and-drop source images, choose a model, select batch behavior, start inference and browse results. |
-| **Image to mesh generator** | Download the appropriate model when necessary, infer geometry on an NVIDIA GPU, export mesh formats and record statistics. |
-| **Interactive 3D mesh viewer** | Inspect generated 3D assets, orbit and zoom around them, and switch between models. |
-| **Batch mesh details** | Compare object names, source counts, vertices, faces, watertightness and generation times. |
-
-## Supported models — first release
-
-| Model | Main strength | Input | Output | License / access |
+| Model | Input | Output | Speed on an RTX 3070 | Licence |
 |---|---|---|---|---|
-| **[TripoSR](https://github.com/VAST-AI-Research/TripoSR)** | Lightweight single-image geometry reconstruction | One reference photo per generated mesh | GLB mesh with vertex color; converted OBJ/STL/PLY | MIT code license; verify model-weight terms |
-| **[Stable Fast 3D](https://github.com/Stability-AI/stable-fast-3d)** | Fast reconstruction with textured materials | One reference photo per generated mesh | Textured GLB; converted OBJ/STL/PLY | Stability AI Community License; model access terms may apply |
+| **Hunyuan3D-2 mini** (default, Tencent, 0.6B) | one photo | detailed shape, **no colour** | ~2 min per object (balanced) | Tencent Hunyuan Community — not for use in the EU, the UK or South Korea |
+| **TripoSR** (VAST AI) | one photo | softer shape **with vertex colours** | a few seconds per object | MIT |
+| **Hunyuan3D-2 multi-view** (Tencent, 1.1B) | 2–4 photos of the same object: front, left, back, right | one shape fused from all views, no colour | ~2–3 min per object | as Hunyuan3D-2 mini |
 
-The selectable backends above are **implemented as model runners**, not verified successful inference runs. Other models, such as TRELLIS.2 or Hunyuan3D multi-view, require dedicated integrations and are not currently available in this flow.
+**Multi-view**: each picture gets a *side* (front, left, back, right) and an *object* name in the Studio. Pictures with the same object name are fused into one mesh; every object needs a front view. Names like `chair_front.png`, `chair_left.png` are recognised automatically.
 
-**Performance:** Both current backends are designed around a CUDA-capable NVIDIA GPU. Available VRAM, model weights, environment dependencies and the selected output quality determine whether a run can complete. A separate GPU with more VRAM may be needed for larger future backends.
+**Quality**: *Fast* (Hunyuan turbo, 5 steps; TripoSR surface resolution 192), *Balanced* (30 steps; 256), *High* (50 steps on a finer grid; 320). *Variations per object* makes extra Hunyuan3D-2 shapes from different seeds.
 
-## Input modes and batch generation
+## What you get
 
-### Independent images — default
+- `glb/<object>.glb` — the mesh, standing on the ground (y = 0), facing +Z, Y up (glTF convention).
+- `exports/<object>.obj|.stl|.ply` — the same mesh in other formats.
+- `previews/<object>_preview.png` — a shaded three-quarter view.
+- `table/models.csv` — vertices, faces, watertightness, colour, time per object.
+- `metadata/generation.json` — model, settings, seed, GPU, licences.
 
-Add multiple JPG, PNG or WebP images. Each photograph becomes its own object and is passed to the selected model. The batch runner creates an individual result set for each object.
+These are visual meshes, not measured CAD: scale is arbitrary (about one unit tall), and they may not be watertight or manifold. Check them before 3D printing or simulation.
 
-### Grouped views — experimental organization
+## Where it runs
 
-Files with a shared prefix can be grouped, for example `chair_front.jpg`, `chair_side.jpg`, `chair_back.jpg`. The generator records all source filenames for the object, **but the current TripoSR and Stable Fast 3D runners only reconstruct the first image of each group**. Grouping does **not** fuse views or increase geometric accuracy yet. For true multi-view reconstruction a model such as Hunyuan3D-2mv must be integrated separately.
+An NVIDIA GPU with at least 6 GB of memory (the generator only goes to such machines). The first run on a machine downloads the model code (Git), its libraries (a few minutes, into the worker's cache) and the weights from Hugging Face (TripoSR ~1.7 GB, Hunyuan3D-2 mini ~2 GB, multi-view ~4 GB); later runs reuse them. The model code runs with the library versions it was written for (Transformers 4.45), isolated from the rest of the worker.
 
-**Current upload limitation:** The EsaSim View-run API currently accepts settings but does not expose a native binary-file upload action. To avoid the truncated JSON error seen in the first test, Mesh Studio now compresses images to a maximum of 384 pixels on their longest side, divides a compact upload into individually bounded chunks, and verifies the payload checksum on the worker when available. This compatibility path has a conservative total payload budget of about **48 KB across the whole batch**. For larger or high-resolution photographs, proper native file staging is required; do not expect this compact mode to preserve source fidelity.
+## Changes in this version
 
-**Preserving the View:** Selected image previews, settings, and historical result cards are saved in the View's state and restored after starting a new run. Historical mesh download links may expire and should be retrieved from the original run's **Results** for reliable access. The rendering frame itself still remounts on a new run; this update restores its data rather than preventing the remount.
-
-## Workflow
-
-1. Check **Compute** and make sure an eligible NVIDIA machine is available.
-2. Open [**Image to mesh studio**](https://esacode.com/app/projects/18/flows/59), then the **View**.
-3. Drop images into the uploader or select them from your computer.
-4. Choose **TripoSR** for geometry or **Stable Fast 3D** for textured assets.
-5. Select **Fast**, **Balanced** or **High** resolution and independent or grouped input.
-6. Click **Generate meshes**. The current run's parameters are submitted directly from the View. No Blueprint edits are required.
-7. Watch the live progress panel and its waiting indicator. Once complete, inspect the snapshots, open the interactive 3D viewer and download the generated files.
-
-## Results and export
-
-For each object the generator aims to produce:
-
-- **GLB** — efficient 3D exchange, including supported materials.
-- **OBJ** — widely used mesh geometry format; texture/material handling depends on conversion.
-- **STL** — geometry for printing and geometric workflows, no colors or textures.
-- **PLY** — geometry and potentially vertex properties, depending on exporter.
-- **Preview PNG** — a lightweight rendered mesh snapshot.
-- **Mesh statistics** — object, model, source image, vertices, triangles, watertightness, elapsed time.
-- **`models.csv`** — tabular inventory for the entire batch.
-- **`generation.json`** — generation settings, object grouping and source-image manifest.
-
-Mesh exports are **not equivalent to parametric CAD** and should not be assumed watertight, scaled correctly, manifold or mechanically accurate. Validate geometry before simulation, FEA or manufacturing.
-
-## Live progress and reliable long runs
-
-A **20-second independent heartbeat** reports the current stage while dependency installation, model download, inference and export run. The View shows a waiting animation, last reported stage, real progress percentage and recent events.
-
-Heartbeat messages mean that the worker's reporting thread is responsive; they do **not** mean that the model has made additional progress. EsaSim's runner also needs to process those messages during long tasks to avoid false disconnection.
-
-## Setup and caveats
-
-- First use requires Git and network access to clone the selected repository and download weights.
-- Python package provisioning may need CUDA, suitable PyTorch wheels, and model-specific native dependencies.
-- Stable Fast 3D may require Hugging Face authentication or access acceptance depending on its model repository.
-- Existing model CLI code is run in a subprocess, and output generation can take substantially longer on constrained GPUs.
-- A proper runtime validation with generated files is still outstanding.
-- Verify licenses of model code, downloaded model weights and generated assets before commercial use.
-
-## Next steps
-
-Further model adapters can add **true multi-view fusion**, advanced textured formats, better scaling, geometry cleanup and higher-fidelity reconstruction. Those capabilities should be implemented and tested as separate backends rather than silently promised by the first release.
-
----
-
-<sub>Image to Mesh Generation · EsaSim workspace · Version 1</sub>
+- Pictures now reach the model at full quality. The first version squeezed every batch into 48 KB of run settings (384 px, low JPEG quality).
+- Hunyuan3D-2 mini and multi-view added; "grouped views" now really fuses the views.
+- Stable Fast 3D removed: on Windows it needs C++/CUDA extensions compiled from source and a gated Hugging Face licence, and its installation could not complete.
+- TripoSR meshes were mirrored (a coordinate swap left over from the Windows marching-cubes patch) and lying on their side; both fixed.
+- Real shaded previews instead of wireframes; working download buttons.
 
 <!-- esasim: files of the project -->
 
@@ -112,7 +58,7 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Workspace blocks it uses
 
-- [Image to mesh generator](blocks/ws-image-to-mesh-generator) · version 12
+- [Image to mesh generator](blocks/ws-image-to-mesh-generator) · version 13
 - [Image to Mesh Studio](blocks/ws-image-to-mesh-studio) · version 4
 
 Keys pasted in blocks (secret settings) are not saved here. Datasets, results and the team stay in EsaSim.
