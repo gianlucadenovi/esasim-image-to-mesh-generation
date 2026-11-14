@@ -8,7 +8,7 @@ An [EsaSim](https://esacode.com/) blueprint block: a view that draws in the brow
 
 | | |
 |---|---|
-| Block | `ws-image-to-mesh-studio` · version 9 |
+| Block | `ws-image-to-mesh-studio` · version 10 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 

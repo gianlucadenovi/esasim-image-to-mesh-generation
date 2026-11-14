@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 9 · view, JavaScript: function render(ctx)
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 10 · view, JavaScript: function render(ctx)
 // Choose photos and a model, press Generate meshes: pictures travel in the run's own settings; shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-14
@@ -20,7 +20,7 @@
  * no live connection to the run is needed. The older live transfer (ctx.send) is kept as a fallback. Results: a shaded
  * preview of each mesh and Download buttons for GLB, OBJ, STL and PLY. */
 function render(ctx) {
-  var MAX_SIDE = 1024, PIECE = 45000, MAX_PICS = 24;
+  var MAX_SIDE = 640, PIECE = 45000, MAX_PICS = 24;
   var VIEWS = ['front', 'left', 'back', 'right'];
   var MODELS = {
     'Hunyuan3D-2 mini': 'Best shape from one photo (Tencent, 0.6B, about 6 GB of GPU memory). Grey mesh without colour. Tencent Hunyuan Community licence: not for use in the EU, the UK or South Korea.',
@@ -260,6 +260,8 @@ function render(ctx) {
     var gen = { launch: true, compact_count: count, compact_len: r.json.length, model: settings.model, quality: settings.quality, candidates: settings.candidates };
     for (var k = 0; k < count; k++) gen['c' + String(k).padStart(2, '0')] = r.json.slice(k * SLOT, (k + 1) * SLOT);
     busy = true; notice = 'Starting the run…'; paint();
+    // the new run shows the view again from the state saved now: keep the pictures and choices for it
+    try { ctx.saveState({ settings: settings, sources: sources, session: session, manifest: manifest }, true); } catch (e) { /* the run still starts */ }
     var call, done = false;
     try { call = ctx.run({ params: { generator: gen } }); } catch (e) { call = Promise.reject(e); }   // called straight from the click
     sendInfo = 'Pictures sent with the run (' + sources.length + ' at up to ' + r.side + ' px, ' + Math.round(r.json.length / 1000) + ' kB).';
