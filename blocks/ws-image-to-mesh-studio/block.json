@@ -3,20 +3,29 @@
     "version": "1",
     "name": "Image to Mesh Studio",
     "category": "Visualizers",
-    "icon": "image",
+    "icon": "chart",
     "side": "frontend",
     "customizable": true,
-    "summary": "View-first image uploads, model selection, batch generation, progress, mesh preview thumbnails, statistics and export downloads.",
-    "help": "Compact compressed image uploads via chunked per-run settings, with integrity checksum. Saves selected images and result cards in View state so they reappear across runs. Current View API lacks native file upload and old-run file handles; previous download URLs can expire.",
+    "summary": "Choose photos and a model, press Generate meshes: pictures go to the run at full quality; shaded previews and GLB/OBJ/STL/PLY downloads.",
+    "help": "Drop pictures, choose TripoSR, Hunyuan3D-2 mini or Hunyuan3D-2 multi-view and a quality, press Generate meshes. Keep the view open until the pictures are sent (a few seconds after the run starts). For multi-view, mark each picture's side (front, left, back, right) and give the pictures of one object the same object name.",
     "inputs": [
         {
-            "id": "meshes",
-            "label": "Mesh results",
+            "id": "glb",
+            "label": "Meshes (GLB)",
             "type": "files",
             "many": true,
             "optional": true,
             "formats": [
-                "glb",
+                "glb"
+            ]
+        },
+        {
+            "id": "exports",
+            "label": "Other formats",
+            "type": "files",
+            "many": true,
+            "optional": true,
+            "formats": [
                 "obj",
                 "stl",
                 "ply"
@@ -24,7 +33,7 @@
         },
         {
             "id": "previews",
-            "label": "Mesh snapshots",
+            "label": "Previews",
             "type": "files",
             "many": true,
             "optional": true,
@@ -34,7 +43,7 @@
         },
         {
             "id": "details",
-            "label": "Mesh metadata",
+            "label": "Mesh inventory",
             "type": "table",
             "optional": true,
             "formats": [
@@ -59,6 +68,6 @@
         "run"
     ],
     "esasim": {
-        "version": 2
+        "version": 3
     }
 }

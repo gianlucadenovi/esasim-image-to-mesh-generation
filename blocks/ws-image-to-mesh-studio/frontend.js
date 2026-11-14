@@ -1,178 +1,301 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Image to Mesh Studio (ws-image-to-mesh-studio) · version 2 · view, JavaScript: function render(ctx)
-// View-first image uploads, model selection, batch generation, progress, mesh preview thumbnails, statistics and export downloads.
+// Image to Mesh Studio (ws-image-to-mesh-studio) · version 3 · view, JavaScript: function render(ctx)
+// Choose photos and a model, press Generate meshes: pictures go to the run at full quality; shaded previews and GLB/OBJ/STL/PLY downloads.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
-// Saved: 2026-11-13
+// Saved: 2026-11-14
 //
 // Inputs   ctx.input("id") gives { files, stream }; ctx.rows("id"), ctx.json("id"), ctx.text("id")
-//   meshes      Files (glb, obj, stl, ply) Mesh results · several · optional
-//   previews    Files (png)               Mesh snapshots · several · optional
-//   details     Table (csv)               Mesh metadata · optional
+//   glb         Files (glb)               Meshes (GLB) · several · optional
+//   exports     Files (obj, stl, ply)     Other formats · several · optional
+//   previews    Files (png)               Previews · several · optional
+//   details     Table (csv)               Mesh inventory · optional
 //   status      Live telemetry            Live progress · optional
 // Settings ctx.params.key
 //   (none)
 // EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 // ── end of EsaSim block header ────────────────────────────────────────
 
+/* Mesh Studio: choose pictures, a model and a quality, press Generate meshes. The pictures (up to 1024 px) are kept in
+ * the view's saved state, the run is started with a small manifest, and when the generator asks for them they are sent
+ * to the running block in pieces (ctx.send), resent if any piece is missing. Results: a shaded preview of each mesh
+ * and Download buttons for GLB, OBJ, STL and PLY. */
 function render(ctx) {
- const root=ctx.el;
- let saved=ctx.state||{}, settings=Object.assign({model:"TripoSR",batch_mode:"independent",quality:"balanced",candidates:1,formats:"glb,obj,stl,ply",cleanup:false},saved.settings||{});
- let uploads=Array.isArray(saved.uploads)?saved.uploads.slice(0,24):[], busy=false, notice="", seen={}, latestFiles=[], lastRun=ctx.run&&ctx.run.id;
- let history=Array.isArray(saved.meshHistory)?saved.meshHistory.slice(0,70):[];
- let cards={};
- root.innerHTML='<div class="viz-pad" style="display:flex;flex-direction:column;gap:13px;padding:14px">'
- +'<div><div style="font-size:22px;font-weight:750">Image to Mesh Studio</div><div class="viz-small viz-muted">Upload photos, choose a reconstruction model, generate mesh assets and review your results.</div></div>'
- +'<div class="viz-tile" style="display:flex;flex-direction:column;gap:10px;padding:13px"><strong>1. Source images</strong><label id="meshd-drop" style="border:2px dashed var(--line,#8b98ac);border-radius:12px;padding:23px;display:flex;justify-content:center;align-items:center;text-align:center;cursor:pointer;flex-direction:column;gap:6px"><span style="font-size:27px">↑</span><strong>Choose or drop images here</strong><span class="viz-small viz-muted">PNG, JPEG, WebP · multiple files · up to 24 images</span><input id="meshd-upload" type="file" accept="image/png,image/jpeg,image/webp" multiple style="display:none"></label><div id="meshd-uploads" style="display:flex;gap:8px;flex-wrap:wrap"></div>'
- +'<label class="viz-small">Input interpretation<select id="meshd-batch" class="viz-in" style="display:block;width:100%;margin-top:4px"><option value="independent">Batch: each image is a separate object</option><option value="grouped">Group views by filename stem (uses first view only)</option></select></label>'
- +'<span class="viz-small viz-muted">Grouped naming: chair_front.jpg, chair_side.jpg, chair_back.jpg. TripoSR and Stable Fast 3D are single-image models; grouping preserves input names but does not fuse views.</span></div>'
- +'<div class="viz-tile" style="display:flex;flex-direction:column;gap:10px;padding:13px"><strong>2. Model and generation</strong><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">'
- +'<label class="viz-small">Reconstruction model<select id="meshd-model" class="viz-in" style="width:100%;display:block;margin-top:5px"><option value="TripoSR">TripoSR — geometry</option><option value="Stable Fast 3D">Stable Fast 3D — textured GLB</option></select></label>'
- +'<label class="viz-small">Quality<select id="meshd-quality" class="viz-in" style="width:100%;display:block;margin-top:5px"><option value="fast">Fast</option><option value="balanced">Balanced</option><option value="high">High</option></select></label></div>'
- +'<div id="meshd-modelinfo" class="viz-small viz-muted" style="padding:10px;border-radius:8px;background:var(--panel-2)"></div>'
- +'<label class="viz-small"><input id="meshd-cleanup" type="checkbox"> Clean mesh geometry (may discard material when converting)</label>'
- +'<div class="viz-small">Export formats: GLB · OBJ · STL · PLY</div>'
- +'<button class="viz-btn primary" id="meshd-go" style="padding:10px 16px;font-weight:650">Generate meshes</button><div class="viz-small viz-muted" id="meshd-hint"></div></div>'
- +'<div class="viz-tile" style="display:flex;flex-direction:column;gap:9px;padding:13px"><div style="display:flex;gap:10px;align-items:center"><div id="meshd-spin" style="display:none;width:25px;height:25px;flex:none;border:3px solid #adb8c54d;border-top-color:#2f4ae0;border-radius:50%;animation:meshspin .8s linear infinite"></div><div style="flex:1"><strong id="meshd-phase">Ready</strong><div id="meshd-msg" class="viz-small viz-muted">Generation starts only after you click the button.</div></div><b id="meshd-pct" class="viz-small">0%</b></div><div style="height:7px;background:#adb8c52b;border-radius:8px;overflow:hidden"><div id="meshd-bar" style="width:0%;height:100%;background:#2f4ae0;transition:width .25s"></div></div><div id="meshd-events" class="viz-small viz-muted" style="max-height:150px;overflow:auto"></div><style>@keyframes meshspin{to{transform:rotate(360deg)}}</style></div>'
- +'<div style="font-size:16px;font-weight:700">3. Generated meshes</div><div id="meshd-results" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:11px"></div></div>';
- function $ (id){return root.querySelector("#meshd-"+id);}
- function persist(){if(ctx.saveState)ctx.saveState({settings:settings,uploads:uploads,meshHistory:history},true);}
- ["model","batch","quality"].forEach(function(k){let key=k==="batch"?"batch_mode":k;$(k).value=settings[key];$(k).onchange=function(){settings[key]=this.value;persist();modelInfo();}});
- $("cleanup").checked=!!settings.cleanup;$("cleanup").onchange=function(){settings.cleanup=this.checked;persist();};
- function modelInfo(){let a=settings.model==="TripoSR";$("modelinfo").textContent=a?"TripoSR · MIT licensed · single-photo mesh reconstruction · approximately 6GB CUDA VRAM · vertex-colored GLB. Quality controls surface extraction resolution.":"Stable Fast 3D · textured UV/PBR GLB · typically about 6GB CUDA VRAM · Stability AI Community License. Quality controls texture resolution; model access may require Hugging Face authorization.";}
- modelInfo();
- async function handle(list){
-  if(ctx.run&&ctx.run.active){notice="Finish current run before changing input";paint();return;}
-  let additions=[...list].filter(f=>/image\/(png|jpeg|webp)/.test(f.type)).slice(0,24);
-  for(let f of additions){
-   if(uploads.length>=24)break;
-   if(f.size>2500000){notice=f.name+" exceeds the 2.5MB input size; resize it first.";continue;}
-   // Resize in browser to reduce request size and keep a bounded per-run payload.
-   try {
-    let data=await new Promise(function(resolve,reject){
-     let reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error("Cannot read "+f.name));reader.readAsDataURL(f);
+  var MAX_SIDE = 1024, PIECE = 45000, MAX_PICS = 24;
+  var VIEWS = ['front', 'left', 'back', 'right'];
+  var MODELS = {
+    'Hunyuan3D-2 mini': 'Best shape from one photo (Tencent, 0.6B, about 6 GB of GPU memory). Grey mesh without colour. Tencent Hunyuan Community licence: not for use in the EU, the UK or South Korea.',
+    'TripoSR': 'Fast coloured mesh from one photo (VAST AI, MIT licence). Softer geometry than Hunyuan3D-2.',
+    'Hunyuan3D-2 multi-view': 'Two to four photos of the SAME object from the front, left, back and right, fused into one shape (Tencent, 1.1B). Mark each photo\'s side below. Same licence as Hunyuan3D-2 mini.'
+  };
+  var st = ctx.state || {};
+  var settings = Object.assign({ model: 'Hunyuan3D-2 mini', quality: 'balanced', candidates: 1 }, st.settings || {});
+  if (!MODELS[settings.model]) settings.model = 'Hunyuan3D-2 mini';
+  var sources = Array.isArray(st.sources) ? st.sources.filter(function (s) { return s && s.data; }) : [];
+  var session = st.session || '', manifest = st.manifest || null;
+  var busy = false, notice = '', sentAt = {}, seenReq = {}, sending = false, cards = {};
+
+  var root = ctx.el;
+  root.innerHTML = '<div class="viz-pad" style="display:flex;flex-direction:column;gap:12px;padding:14px;box-sizing:border-box">'
+    + '<div><div style="font-size:22px;font-weight:750">Image to Mesh Studio</div><div class="viz-small viz-muted">Photos in, 3D meshes out: preview them here, turn them in the 3D view, download GLB, OBJ, STL or PLY.</div></div>'
+    + '<div class="viz-tile" style="display:flex;flex-direction:column;gap:10px;padding:13px"><strong>1 · Pictures</strong>'
+    + '<label id="ms-drop" style="border:2px dashed var(--line,#8b98ac);border-radius:12px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;text-align:center">'
+    + '<span style="font-size:24px">↑</span><strong>Choose or drop pictures</strong><span class="viz-small viz-muted">PNG, JPEG or WebP · one object per photo, centred, plain background works best · up to 24</span>'
+    + '<input id="ms-file" type="file" accept="image/png,image/jpeg,image/webp" multiple style="display:none"></label>'
+    + '<div id="ms-pics" style="display:flex;gap:8px;flex-wrap:wrap"></div>'
+    + '<div style="display:flex;gap:8px;align-items:center"><button id="ms-clear" class="viz-btn" type="button">Remove all</button><span id="ms-count" class="viz-small viz-muted"></span></div></div>'
+    + '<div class="viz-tile" style="display:flex;flex-direction:column;gap:10px;padding:13px"><strong>2 · Model</strong>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">'
+    + '<label class="viz-small">Model<select id="ms-model" class="viz-in" style="display:block;width:100%;margin-top:5px"><option>Hunyuan3D-2 mini</option><option>TripoSR</option><option>Hunyuan3D-2 multi-view</option></select></label>'
+    + '<label class="viz-small">Quality<select id="ms-quality" class="viz-in" style="display:block;width:100%;margin-top:5px"><option value="fast">Fast</option><option value="balanced">Balanced</option><option value="high">High (slower)</option></select></label>'
+    + '<label class="viz-small" id="ms-varlabel">Variations per object<input id="ms-var" class="viz-in" type="number" min="1" max="4" style="display:block;width:100%;box-sizing:border-box;margin-top:5px"></label></div>'
+    + '<div id="ms-info" class="viz-small viz-muted" style="padding:9px 10px;border-radius:8px;background:var(--panel-2)"></div>'
+    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="ms-go" class="viz-btn primary" style="padding:10px 18px;font-weight:650">Generate meshes</button><span id="ms-hint" class="viz-small viz-muted"></span></div></div>'
+    + '<div class="viz-tile" style="display:flex;flex-direction:column;gap:8px;padding:13px"><div style="display:flex;gap:10px;align-items:center"><div id="ms-spin" style="display:none;width:24px;height:24px;flex:none;border:3px solid #adb8c54d;border-top-color:var(--accent,#2f4ae0);border-radius:50%;animation:msspin .8s linear infinite"></div><div style="flex:1;min-width:0"><strong id="ms-phase">Ready</strong><div id="ms-msg" class="viz-small viz-muted">Nothing runs until you press Generate meshes.</div></div><b id="ms-pct" class="viz-small">0%</b></div>'
+    + '<div style="height:7px;background:#adb8c52b;border-radius:8px;overflow:hidden"><div id="ms-bar" style="width:0%;height:100%;background:var(--accent,#2f4ae0);transition:width .25s"></div></div>'
+    + '<div id="ms-events" class="viz-small viz-muted" style="max-height:130px;overflow:auto"></div><style>@keyframes msspin{to{transform:rotate(360deg)}}</style></div>'
+    + '<div style="font-size:16px;font-weight:700">3 · Meshes</div><div id="ms-results" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:11px"></div></div>';
+  function $(id) { return root.querySelector('#ms-' + id); }
+
+  function persist() {
+    if (!ctx.saveState) return Promise.resolve();
+    try {
+      var r = ctx.saveState({ settings: settings, sources: sources, session: session, manifest: manifest }, true);
+      return r && r.then ? r : Promise.resolve();
+    } catch (e) { return Promise.reject(e); }
+  }
+  function multi() { return settings.model === 'Hunyuan3D-2 multi-view'; }
+
+  // ---------------------------------------------------------------------------------------------- pictures
+  function viewOf(name) { var m = /[_\-\s](front|left|back|right)$/i.exec(String(name).replace(/\.[^.]+$/, '')); return m ? m[1].toLowerCase() : ''; }
+  function objectOf(name) { return String(name).replace(/\.[^.]+$/, '').replace(/[_\-\s](front|left|back|right|side|top|bottom|view\d*)$/i, '') || 'object'; }
+  function readFile(f) {
+    return new Promise(function (resolve, reject) {
+      var rd = new FileReader();
+      rd.onload = function () {
+        var im = new Image();
+        im.onload = function () {
+          var s = Math.min(1, MAX_SIDE / Math.max(im.width, im.height));
+          var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(im.width * s)); c.height = Math.max(1, Math.round(im.height * s));
+          var g = c.getContext('2d'); g.drawImage(im, 0, 0, c.width, c.height);
+          var alpha = false;
+          if (/png|webp/i.test(f.type)) {                             // keep a cut-out's transparency
+            var d = g.getImageData(0, 0, c.width, c.height).data;
+            for (var i = 3; i < d.length; i += 16) if (d[i] < 250) { alpha = true; break; }
+          }
+          var data = alpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.92);
+          var t = document.createElement('canvas'), ts = Math.min(1, 160 / Math.max(c.width, c.height));
+          t.width = Math.round(c.width * ts); t.height = Math.round(c.height * ts); t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
+          resolve({ name: f.name, data: data, thumb: t.toDataURL('image/jpeg', 0.7), view: viewOf(f.name), object: viewOf(f.name) ? objectOf(f.name) : '', w: c.width, h: c.height });
+        };
+        im.onerror = function () { reject(new Error('Cannot read ' + f.name)); };
+        im.src = rd.result;
+      };
+      rd.onerror = function () { reject(new Error('Cannot read ' + f.name)); };
+      rd.readAsDataURL(f);
     });
-    let optimized=await new Promise(function(resolve,reject){
-     let im=new Image();im.onload=function(){
-      let factor=Math.min(1,384/Math.max(im.width,im.height));
-      let c=document.createElement("canvas");c.width=Math.max(1,Math.round(im.width*factor));c.height=Math.max(1,Math.round(im.height*factor));
-      c.getContext("2d").drawImage(im,0,0,c.width,c.height);
-      resolve(c.toDataURL("image/jpeg",.52));
-     };im.onerror=()=>reject(new Error("Cannot decode "+f.name));im.src=data;
+  }
+  function add(list) {
+    if (ctx.run && ctx.run.active) { notice = 'Wait for the current run to finish before changing the pictures.'; paint(); return; }
+    var files = Array.prototype.filter.call(list, function (f) { return /image\/(png|jpeg|webp)/.test(f.type); });
+    var chain = Promise.resolve();
+    files.forEach(function (f) {
+      chain = chain.then(function () {
+        if (sources.length >= MAX_PICS) return;
+        return readFile(f).then(function (s) { sources.push(s); }, function (e) { notice = e.message; });
+      });
     });
-    uploads.push({name:f.name,data:optimized});
-   } catch(e){notice=e.message;}
+    chain.then(function () {
+      autoViews(); paintPics(); paint();
+      persist().catch(function () { notice = 'These pictures are too large to keep in the view: remove some and try again.'; paint(); });
+    });
   }
-  persist();paintUploads();paint();
- }
- function paintUploads(){
-  let dest=$("uploads");dest.replaceChildren();
-  uploads.forEach(function(it,i){
-   let card=document.createElement("div");card.style.cssText="width:100px;border-radius:9px;border:1px solid var(--line);overflow:hidden;position:relative";
-   let img=document.createElement("img");img.src=it.data;img.alt=it.name;img.style="width:100%;height:65px;object-fit:contain";
-   let cap=document.createElement("div");cap.className="viz-small";cap.textContent=it.name;cap.title=it.name;cap.style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:4px";
-   let remove=document.createElement("button");remove.type="button";remove.textContent="×";remove.title="Remove "+it.name;remove.style.cssText="position:absolute;right:3px;top:3px;border-radius:6px;cursor:pointer";
-   remove.onclick=function(){uploads.splice(i,1);persist();paintUploads();paint();};
-   card.append(img,cap,remove);dest.appendChild(card);
-  });
- }
- $("upload").onchange=function(){handle(this.files);this.value="";};
- let drop=$("drop");drop.ondragover=function(e){e.preventDefault();drop.style.background="var(--panel-2)";};drop.ondragleave=function(){drop.style.background="";};drop.ondrop=function(e){e.preventDefault();drop.style.background="";handle(e.dataTransfer.files);};
- function paint(){
-  let active=!!(busy||(ctx.run&&ctx.run.active));
-  $("go").disabled=active||!uploads.length;
-  $("hint").textContent=notice||(active?"Run in progress. Wait for the results.":uploads.length+" source image(s) selected.");
-  let stream=(ctx.input("status")||{stream:[]}).stream||[];
-  let items=stream.filter(x=>x.channel==="mesh_status"&&x.data&&typeof x.data==="object");
-  let last=items.length?items[items.length-1].data:null;
-  let pct=last&&Number.isFinite(+last.percent)?Math.max(0,Math.min(100,+last.percent)):0;
-  $("spin").style.display=active?"block":"none";
-  let failed=!active&&ctx.run&&["failed","lost","canceled"].includes(ctx.run.status);
-  $("phase").textContent=failed?"Generation stopped":last&&last.stage?last.stage.replace(/_/g," ").replace(/^./,c=>c.toUpperCase()):active?"Starting run":"Ready";
-  $("msg").textContent=failed?"Run "+ctx.run.status+". Open its log for details.":last&&last.message?last.message:active?"Waiting for an available worker…":"Generation starts only after you click the button.";
-  $("bar").style.width=pct+"%";$("pct").textContent=Math.round(pct)+"%";
-  $("events").replaceChildren();
-  items.slice(-6).reverse().forEach(x=>{let div=document.createElement("div");div.textContent="• "+x.data.message;$("events").appendChild(div);});
- }
- $("go").onclick=function(){
-  if(!uploads.length||busy||(ctx.run&&ctx.run.active))return;
-  let payload=JSON.stringify(uploads);
-  if(payload.length>48000){notice="The current EsaSim run API can carry at most 48 KB of image data. Reduce the batch size or use smaller images.";paint();return;}
-  const chunks=payload.match(/[\s\S]{1,1000}/g)||[];
-  if(chunks.length>48){notice="Upload too large for the run parameter transport.";paint();return;}
-  let gen={launch:true,images_chunk_count:chunks.length,images_payload:"",model:settings.model,batch_mode:settings.batch_mode,quality:settings.quality,candidates:1,formats:"glb,obj,stl,ply",cleanup:!!settings.cleanup};
-  chunks.forEach(function(chunk,i){gen["img_chunk_"+String(i).padStart(3,"0")]=chunk;});
-  busy=true;notice="Submitting "+uploads.length+" image(s) in "+chunks.length+" verified chunks…";persist();paint();
-  function submit(){
-    ctx.run({params:{generator:gen}}).then(function(){busy=false;notice="Run started. Your uploaded images remain selected.";paint();},function(e){busy=false;notice=e&&e.message||"Could not start run.";paint();});
+  function autoViews() {                                            // multi-view: unlabelled pictures get the free sides in order
+    var used = {};
+    sources.forEach(function (s) { if (s.view) used[(s.object || 'object') + '|' + s.view] = 1; });
+    sources.forEach(function (s) {
+      if (s.view) return;
+      var o = s.object || 'object';
+      for (var i = 0; i < VIEWS.length; i++) if (!used[o + '|' + VIEWS[i]]) { s.view = VIEWS[i]; used[o + '|' + VIEWS[i]] = 1; return; }
+    });
   }
-  // Use SHA-256 where WebCrypto is available. The backend checks before decoding.
-  if(typeof crypto!=="undefined"&&crypto.subtle){
-    crypto.subtle.digest("SHA-256",new TextEncoder().encode(payload)).then(function(digest){
-      gen.images_checksum=Array.from(new Uint8Array(digest)).map(function(v){return v.toString(16).padStart(2,"0");}).join("");
-      submit();
-    }).catch(function(){submit();});
-  }else submit();
- };
- function showResults(){
-  let assets=(ctx.input("meshes")||{files:[]}).files||[];
-  let previews=(ctx.input("previews")||{files:[]}).files||[];
-  let rows=ctx.rows("details")||[];
-  let box=$("results"),run=ctx.run&&ctx.run.id||0;
-  // Keep previous cards; never call replaceChildren() at a new run.
-  let currentGroups={};
-  [...assets,...previews].forEach(function(f){
-   let key=String(f.name||"").replace(/_preview\.png$|\.(glb|obj|stl|ply)$/i,"");
-   (currentGroups[key]||(currentGroups[key]=[])).push(f);
-  });
-  function addCard(key,runId,record,sourceFiles){
-   let uid=String(runId)+":"+key;
-   if(cards[uid])return cards[uid];
-   let card=document.createElement("div");card.className="viz-tile";
-   card.style.cssText="padding:12px;display:flex;flex-direction:column;gap:9px";
-   let title=document.createElement("b");title.textContent=key+" · Run #"+runId;card.appendChild(title);
-   let img=document.createElement("img");img.alt="Mesh preview "+key;
-   img.style.cssText="width:100%;height:175px;object-fit:contain;background:var(--panel-2);border-radius:8px";
-   card.appendChild(img);
-   let meta=document.createElement("div");meta.className="viz-small viz-muted";
-   meta.textContent=record&&record.row?record.row:"Loading mesh details…";card.appendChild(meta);
-   let downloads=document.createElement("div");downloads.style.cssText="display:flex;flex-wrap:wrap;gap:6px";
-   card.appendChild(downloads);box.appendChild(card);
-   cards[uid]={card:card,img:img,meta:meta,downloads:downloads};
-   if(record&&record.preview)img.src=record.preview;
-   (record&&record.links||[]).forEach(function(f){appendLink(downloads,f.label,f.url);});
-   return cards[uid];
+  function paintPics() {
+    var box = $('pics'); box.replaceChildren();
+    sources.forEach(function (s, i) {
+      var card = document.createElement('div');
+      card.style.cssText = 'width:118px;border:1px solid var(--line,#8b98ac55);border-radius:9px;overflow:hidden;position:relative;display:flex;flex-direction:column';
+      var img = document.createElement('img'); img.src = s.thumb || s.data; img.alt = s.name; img.style.cssText = 'width:100%;height:80px;object-fit:contain;background:var(--panel-2)';
+      var cap = document.createElement('div'); cap.className = 'viz-small'; cap.textContent = s.name; cap.title = s.name + ' · ' + s.w + '×' + s.h + ' px';
+      cap.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 5px';
+      var x = document.createElement('button'); x.type = 'button'; x.textContent = '×'; x.title = 'Remove'; x.style.cssText = 'position:absolute;right:3px;top:3px;border-radius:6px;cursor:pointer';
+      x.onclick = function () { if (ctx.run && ctx.run.active) return; sources.splice(i, 1); paintPics(); paint(); persist(); };
+      card.append(img, cap, x);
+      if (multi()) {
+        var sel = document.createElement('select'); sel.className = 'viz-in viz-small'; sel.style.margin = '0 4px 4px';
+        VIEWS.forEach(function (v) { var o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+        sel.value = s.view || 'front';
+        sel.onchange = function () { s.view = sel.value; persist(); paint(); };
+        var obj = document.createElement('input'); obj.className = 'viz-in viz-small'; obj.placeholder = 'object'; obj.value = s.object || '';
+        obj.title = 'Pictures with the same object name are fused into one mesh'; obj.style.cssText = 'margin:0 4px 5px;box-sizing:border-box;width:calc(100% - 8px)';
+        obj.oninput = function () { s.object = obj.value.trim(); persist(); paint(); };
+        card.append(sel, obj);
+      }
+      box.appendChild(card);
+    });
+    $('count').textContent = sources.length ? sources.length + ' picture' + (sources.length === 1 ? '' : 's') : 'No pictures yet.';
   }
-  function appendLink(container,label,url){
-   let a=document.createElement("a");a.className="viz-btn viz-small";a.textContent=label+" ↓";
-   a.target="_blank";a.rel="noopener";a.href=url;container.appendChild(a);
+  $('file').onchange = function () { add(this.files); this.value = ''; };
+  var drop = $('drop');
+  drop.ondragover = function (e) { e.preventDefault(); drop.style.background = 'var(--panel-2)'; };
+  drop.ondragleave = function () { drop.style.background = ''; };
+  drop.ondrop = function (e) { e.preventDefault(); drop.style.background = ''; add(e.dataTransfer.files); };
+  $('clear').onclick = function () { if (ctx.run && ctx.run.active) return; sources = []; paintPics(); paint(); persist(); };
+
+  // ---------------------------------------------------------------------------------------------- settings
+  $('model').value = settings.model; $('quality').value = settings.quality; $('var').value = settings.candidates;
+  $('model').onchange = function () { settings.model = this.value; if (multi()) autoViews(); persist(); paintPics(); paint(); };
+  $('quality').onchange = function () { settings.quality = this.value; persist(); };
+  $('var').onchange = function () { settings.candidates = Math.max(1, Math.min(4, Math.floor(+this.value) || 1)); this.value = settings.candidates; persist(); };
+
+  function problems() {
+    if (!sources.length) return 'Add at least one picture.';
+    if (multi()) {
+      var objs = {};
+      sources.forEach(function (s) { var o = s.object || 'object'; (objs[o] = objs[o] || []).push(s.view || 'front'); });
+      for (var o in objs) {
+        var v = objs[o];
+        if (v.length > 4) return 'Object "' + o + '" has more than 4 pictures: one per side at most.';
+        if (v.indexOf('front') < 0) return 'Object "' + o + '" needs a picture marked front.';
+        if (v.some(function (x, i) { return v.indexOf(x) !== i; })) return 'Object "' + o + '" has two pictures marked as the same side.';
+      }
+    }
+    return '';
   }
-  history.slice().reverse().forEach(function(record){
-   if(record&&record.key)addCard(record.key,record.run,record);
-  });
-  Object.keys(currentGroups).forEach(function(key){
-   let group=currentGroups[key],row=rows.find(function(r){return String(r.preview||"").replace(/_preview\.png$/,"")===key;});
-   let uid=String(run)+":"+key,existing=cards[uid],record=history.find(function(h){return h.run===run&&h.key===key;});
-   if(!record){
-    record={key:key,run:run,preview:"",links:[],row:row?row.model+" · "+row.vertices+" vertices · "+row.faces+" faces · "+row.duration_s+" s":""};
-    history.unshift(record);history=history.slice(0,70);persist();
-   }
-   let card=existing||addCard(key,run,record);
-   if(row){record.row=row.model+" · "+row.vertices+" vertices · "+row.faces+" faces · "+row.duration_s+" s";card.meta.textContent=record.row;}
-   let preview=group.find(function(f){return /_preview\.png$/i.test(f.name);});
-   if(preview&&!record.preview)ctx.files.url(preview).then(function(url){record.preview=url;card.img.src=url;persist();}).catch(function(){});
-   group.filter(function(f){return /\.(glb|obj|stl|ply)$/i.test(f.name);}).forEach(function(f){
-    let label=f.name.split(".").pop().toUpperCase();
-    if(record.links.some(function(x){return x.label===label;}))return;
-    ctx.files.url(f).then(function(url){
-      record.links.push({label:label,url:url});appendLink(card.downloads,label,url);persist();
-    }).catch(function(){});
-   });
-  });
-  if(!Object.keys(cards).length){
-   box.textContent="Generated meshes and historical previews will appear here. Existing results remain under their original run's Results page.";
+
+  // ---------------------------------------------------------------------------------------------- generate
+  function b64of(s) { return s.data.slice(s.data.indexOf(',') + 1); }
+  function sha256(b64) {
+    if (!(window.crypto && crypto.subtle)) return Promise.resolve('');
+    var bin = atob(b64), u = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return crypto.subtle.digest('SHA-256', u).then(function (d) { return Array.from(new Uint8Array(d)).map(function (x) { return x.toString(16).padStart(2, '0'); }).join(''); }).catch(function () { return ''; });
   }
- }
- ctx.on("run",function(){if(ctx.run&&ctx.run.id!==lastRun){lastRun=ctx.run.id;seen={};}paint();showResults();});
- ctx.on("update",function(){paint();showResults();});
- paintUploads();paint();showResults();
+  $('go').onclick = function () {
+    if (busy || (ctx.run && ctx.run.active)) return;
+    var bad = problems(); if (bad) { notice = bad; paint(); return; }
+    busy = true; notice = 'Preparing the pictures…'; paint();
+    Promise.all(sources.map(function (s) { return sha256(b64of(s)); })).then(function (hashes) {
+      session = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      manifest = sources.map(function (s, i) {
+        return { i: i, name: s.name, view: multi() ? (s.view || 'front') : '', object: multi() ? (s.object || 'object') : '',
+                 parts: Math.max(1, Math.ceil(b64of(s).length / PIECE)), sha256: hashes[i] };
+      });
+      sentAt = {}; seenReq = {}; cards = {}; $('results').replaceChildren();
+      return persist().then(function () {
+        return ctx.run({ params: { generator: { launch: true, run_without_view: false, session: session, upload_manifest: JSON.stringify(manifest),
+          model: settings.model, quality: settings.quality, candidates: settings.candidates } } });
+      });
+    }).then(function () { busy = false; notice = ''; paint(); }, function (e) {
+      busy = false; notice = (e && e.message) || 'Could not start the run.'; paint();
+    });
+  };
+
+  // the generator asks for the pictures (stage awaiting_upload, with the pieces still missing): send them
+  function serve(items) {
+    if (!session || !manifest || sending || !(ctx.run && ctx.run.active)) return;
+    var req = null;
+    for (var i = items.length - 1; i >= 0; i--) {
+      var d = items[i].data;
+      if (d.session === session && (d.stage === 'awaiting_upload' || d.stage === 'upload_complete')) { req = items[i]; break; }
+    }
+    if (!req || req.data.stage === 'upload_complete' || !Array.isArray(req.data.missing)) return;
+    var key = String(req.t) + '|' + req.data.received;
+    if (seenReq[key]) return; seenReq[key] = 1;
+    var now = Date.now(), todo = req.data.missing.filter(function (m) { return !(sentAt[m[0] + ':' + m[1]] > now - 8000); });
+    if (!todo.length) return;
+    sending = true;
+    var chain = Promise.resolve();
+    todo.forEach(function (m) {
+      chain = chain.then(function () {
+        var s = sources[m[0]]; if (!s) return;
+        var b = b64of(s), piece = b.slice(m[1] * PIECE, (m[1] + 1) * PIECE);
+        sentAt[m[0] + ':' + m[1]] = Date.now();
+        return ctx.send('mesh_upload', { session: session, i: m[0], part: m[1], parts: manifest[m[0]].parts, b64: piece });
+      });
+    });
+    chain.catch(function (e) { notice = 'Sending the pictures: ' + ((e && e.message) || 'failed'); })
+      .then(function () { sending = false; paint(); });
+  }
+
+  // ---------------------------------------------------------------------------------------------- progress
+  function paint() {
+    var active = !!(busy || (ctx.run && ctx.run.active));
+    var bad = problems();
+    $('go').disabled = active || !!bad;
+    $('hint').textContent = notice || (active ? 'Working… keep this view open until the pictures are sent.' : bad || 'Ready: ' + sources.length + ' picture' + (sources.length === 1 ? '' : 's') + '.');
+    $('info').textContent = MODELS[settings.model];
+    $('varlabel').style.display = settings.model === 'TripoSR' ? 'none' : '';
+    var items = ((ctx.input('status') || {}).stream || []).filter(function (x) { return x.channel === 'mesh_status' && x.data && typeof x.data === 'object'; });
+    serve(items);
+    var last = items.length ? items[items.length - 1].data : null;
+    var pct = last && isFinite(+last.percent) ? Math.max(0, Math.min(100, +last.percent)) : 0;
+    var failed = !active && ctx.run && ['failed', 'lost', 'canceled'].indexOf(ctx.run.status) >= 0;
+    var names = { awaiting_upload: 'Sending the pictures', upload_complete: 'Pictures received', installing: 'Installing (first time only)', loading: 'Loading the model',
+                  generating: 'Generating', exported: 'Exporting', done: 'Done', idle: 'Ready', ready: 'Ready to generate', preparing: 'Preparing' };
+    $('spin').style.display = active ? 'block' : 'none';
+    $('phase').textContent = failed ? 'Generation stopped' : last && last.stage ? (names[last.stage] || last.stage) : active ? 'Starting…' : 'Ready';
+    $('msg').textContent = failed ? 'Run ' + ctx.run.status + ': open the run\'s log for the reason.' : last && last.message ? last.message : active ? 'Waiting for the GPU machine…' : 'Nothing runs until you press Generate meshes.';
+    $('bar').style.width = pct + '%'; $('pct').textContent = Math.round(pct) + '%';
+    var ev = $('events'); ev.replaceChildren();
+    items.filter(function (x) { return !x.data.heartbeat; }).slice(-6).reverse().forEach(function (x) {
+      var d = document.createElement('div'); d.textContent = '• ' + x.data.message; ev.appendChild(d);
+    });
+  }
+
+  // ---------------------------------------------------------------------------------------------- results
+  function save(file, btn) {
+    var label = btn.textContent; btn.disabled = true; btn.textContent = '…';
+    var mime = /\.glb$/i.test(file.name) ? 'model/gltf-binary' : /\.stl$/i.test(file.name) ? 'model/stl' : 'application/octet-stream';
+    ctx.files.buffer(file).then(function (buf) { return ctx.save(file.name, new Blob([buf], { type: mime })); })
+      .then(function () { btn.textContent = '✓ ' + label; setTimeout(function () { btn.textContent = label; }, 1500); },
+            function (e) { btn.textContent = label; notice = 'Download failed: ' + ((e && e.message) || 'file not available'); paint(); })
+      .then(function () { btn.disabled = false; });
+  }
+  function results() {
+    var all = [].concat((ctx.input('glb') || {}).files || [], (ctx.input('exports') || {}).files || []);
+    var previews = (ctx.input('previews') || {}).files || [];
+    var rows = ctx.rows('details') || [];
+    var groups = {};
+    all.forEach(function (f) { var k = f.name.replace(/\.(glb|obj|stl|ply)$/i, ''); (groups[k] = groups[k] || []).push(f); });
+    var box = $('results'), keys = Object.keys(groups).sort();
+    var ph = box.querySelector('[data-placeholder]');
+    if (!keys.length) { if (!box.children.length) box.innerHTML = '<div data-placeholder="1" class="viz-small viz-muted">The meshes of the last run appear here.</div>'; return; }
+    if (ph) ph.remove();
+    keys.forEach(function (k) {
+      var c = cards[k];
+      if (!c) {
+        var tile = document.createElement('div'); tile.className = 'viz-tile'; tile.style.cssText = 'padding:11px;display:flex;flex-direction:column;gap:8px';
+        var t = document.createElement('b'); t.textContent = k;
+        var img = document.createElement('img'); img.alt = 'Preview of ' + k; img.style.cssText = 'width:100%;height:200px;object-fit:contain;background:var(--panel-2);border-radius:8px';
+        var meta = document.createElement('div'); meta.className = 'viz-small viz-muted';
+        var dl = document.createElement('div'); dl.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+        tile.append(t, img, meta, dl); box.appendChild(tile);
+        c = cards[k] = { img: img, meta: meta, dl: dl, buttons: {}, preview: '' };
+      }
+      var pv = previews.filter(function (f) { return f.name === k + '_preview.png'; })[0];
+      if (pv && c.preview !== pv.id) { c.preview = pv.id; ctx.files.url(pv).then(function (u) { c.img.src = u; }); }
+      var r = rows.filter(function (x) { return x.object === k; })[0];
+      if (r) c.meta.textContent = r.model + ' · ' + Number(r.vertices).toLocaleString() + ' vertices · ' + Number(r.faces).toLocaleString() + ' faces · ' + (r.colour === 'none' ? 'no colour' : r.colour) + (+r.seconds ? ' · ' + r.seconds + ' s' : '');
+      ['glb', 'obj', 'stl', 'ply'].forEach(function (ext) {
+        var f = groups[k].filter(function (x) { return x.name.toLowerCase().endsWith('.' + ext); })[0];
+        if (!f || c.buttons[ext]) return;
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'viz-btn' + (ext === 'glb' ? ' primary' : ''); b.textContent = '↓ ' + ext.toUpperCase();
+        b.onclick = function () { save(f, b); };
+        c.buttons[ext] = b; c.dl.appendChild(b);
+      });
+    });
+  }
+
+  ctx.on('update', function () { paint(); results(); });
+  ctx.on('run', function () { notice = ''; paint(); results(); });
+  paintPics(); paint(); results();
 }
