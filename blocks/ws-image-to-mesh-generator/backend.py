@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Image to mesh generator (ws-image-to-mesh-generator) · version 11 · machine block, Python: def run(ctx)
+# Image to mesh generator (ws-image-to-mesh-generator) · version 12 · machine block, Python: def run(ctx)
 # Photos to 3D meshes on an NVIDIA GPU: TripoSR (coloured), Hunyuan3D-2 mini (detailed shape) or Hunyuan3D-2 multi-view (front/left/back/right fused); GLB/OBJ/STL/PLY, shaded previews.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-14
@@ -262,10 +262,11 @@ def generate(ctx, p, update):
     rows = []
     for k, (obj, var, path, secs) in enumerate(raw):
         mesh = load_mesh(path)
-        if spec["kind"] == "triposr":                               # TripoSR is Z-up: stand it up (Y-up, as glTF wants)
+        if spec["kind"] == "triposr":                               # TripoSR is Z-up, facing -X: stand it up facing +Z (glTF)
             import numpy as np
+            mesh.fix_normals()
             mesh.apply_transform(trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0]))
-            mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(-np.pi / 2, [0, 1, 0]))
         lo, hi = mesh.bounds
         mesh.apply_translation([-(lo[0] + hi[0]) / 2, -lo[1], -(lo[2] + hi[2]) / 2])   # centred, standing on y = 0
         stem = obj["safe"] + ("_v%d" % (var + 1) if variants > 1 else "")
@@ -392,6 +393,10 @@ def patch_triposr(repo):
     iso = repo / "tsr" / "models" / "isosurface.py"
     src = iso.read_text(encoding="utf-8")
     if "from torchmcubes import marching_cubes" not in src:
+        # an earlier patch kept torchmcubes' axis swap, which mirrors scikit-image's output: take it out
+        swap = "        v_pos = v_pos[..., [2, 1, 0]]\n"
+        if "density = level.detach()" in src and swap in src:
+            iso.write_text(src.replace(swap, "", 1), encoding="utf-8")
         return
     src = src.replace("from torchmcubes import marching_cubes", "from skimage.measure import marching_cubes")
     old = """        try:
@@ -406,8 +411,7 @@ def patch_triposr(repo):
         v_pos, t_pos_idx, _, _ = self.mc_func(density, level=0.0)
         v_pos = torch.as_tensor(v_pos.copy(), dtype=torch.float32, device=level.device)
         t_pos_idx = torch.as_tensor(t_pos_idx.copy(), dtype=torch.long, device=level.device)
-        v_pos = v_pos[..., [2, 1, 0]]
-        v_pos = v_pos / (self.resolution - 1.0)
+        v_pos = v_pos / (self.resolution - 1.0)          # scikit-image already returns (i, j, k): no axis swap
         return v_pos, t_pos_idx"""
     if old not in src:
         raise RuntimeError("TripoSR's isosurface code changed upstream: the Windows patch cannot be applied.")
@@ -539,8 +543,13 @@ def render_preview(mesh, path, size=640):
     from matplotlib.collections import PolyCollection
     v = np.asarray(mesh.vertices, dtype=float)
     f = np.asarray(mesh.faces)
-    if len(f) > 60000:
-        f = f[np.random.default_rng(0).choice(len(f), 60000, replace=False)]
+    if len(f) > 250000:                                              # very dense meshes: simplify the picture only
+        try:
+            m2 = mesh.simplify_quadric_decimation(face_count=200000)
+            v, f = np.asarray(m2.vertices, dtype=float), np.asarray(m2.faces)
+            mesh = m2
+        except Exception:
+            pass
     v = v - (v.min(0) + v.max(0)) / 2
     az, el = np.radians(35), np.radians(20)
     ry = np.array([[np.cos(az), 0, np.sin(az)], [0, 1, 0], [-np.sin(az), 0, np.cos(az)]])
