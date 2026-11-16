@@ -7,6 +7,8 @@
     "name": "Image to Mesh Generation",
     "description": "Photos to 3D meshes on your NVIDIA GPU: TripoSR (coloured), Hunyuan3D-2 mini (detailed shape) and Hunyuan3D-2 multi-view (front/left/back/right fused). Shaded previews, a 3D view and GLB/OBJ/STL/PLY downloads.",
     "type": "generative-ai",
+    "cover": "upload",
+    "cover_file": "assets/cover.jpg",
     "readme": "README.md",
     "blueprints": [
         {

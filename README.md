@@ -1,3 +1,7 @@
+<!-- esasim: cover -->
+![Image to Mesh Generation](assets/cover.jpg)
+<!-- /esasim: cover -->
+
 <div align="center">
 
 <!-- Banner: upload a picture named banner.png under Data › Readme pictures (a mesh preview works well), then: ![Image to Mesh Generation](pictures/banner.png) -->
