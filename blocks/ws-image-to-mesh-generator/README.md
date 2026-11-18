@@ -4,7 +4,7 @@ Photos to 3D meshes on an NVIDIA GPU: TripoSR (coloured), Hunyuan3D-2 mini (deta
 
 Start it from the Mesh Studio view. Generate meshes sends the pictures in the run's own settings (compact, up to 1024 px) or live as messages. Or, for a run from the blueprint, give Image links (one per line) or wire pictures to Images and turn on Run without the View. Models: TripoSR (MIT, coloured mesh, seconds), Hunyuan3D-2 mini (detailed shape without colour, about 6 GB of GPU memory), Hunyuan3D-2 multi-view (pictures of one object from the front, left, back and right fused into one shape). Hunyuan3D-2 is under the Tencent Hunyuan Community licence, which does not cover the EU, the UK or South Korea.
 
-An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Python (`backend.py`, `def run(ctx)`).
+An [EsaSim](https://esacode.com/) blueprint block: it runs on a worker, in Python (`backend.py`, `def run(ctx)`).
 
 | | |
 |---|---|
